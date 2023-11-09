@@ -1,7 +1,5 @@
 # DemoBot
 
-A brief description of your Telegram bot and its functionalities.
-
 ## Table of Contents
 
 - [Introduction](#introduction)
