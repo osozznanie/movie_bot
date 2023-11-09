@@ -13,7 +13,6 @@ A brief description of your Telegram bot and its functionalities.
 - [Bot Commands](#bot-commands)
 - [Contributing](#contributing)
 - [License](#license)
-- [Acknowledgments](#acknowledgments)
 
 ## Introduction
 
@@ -87,9 +86,5 @@ If you'd like to contribute to this project, please follow the guidelines in [CO
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-
-## Acknowledgments
-
-Give credit to any libraries, tutorials, or resources that you found helpful in developing DemoBot.
 
 ---
