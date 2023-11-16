@@ -43,6 +43,8 @@ async def set_language_callback(query: types.CallbackQuery):
     await bot.send_message(query.from_user.id, next_action_message, reply_markup=menu_keyboard(language_code),
                            parse_mode=ParseMode.HTML)
     await bot.answer_callback_query(query.id, f"Language set to {language_code}")
+
+    # Remove the menu buttons
     await bot.edit_message_reply_markup(query.from_user.id, query.message.message_id)
 
 
@@ -54,18 +56,13 @@ async def set_menu_callback(query: types.CallbackQuery):
     menu_code = query.data.split('_')[2]
     language_code = query.data.split('_')[2]
 
-    # Handle each menu option
     if menu_code == '1':
-        # Handle the first menu option
         await bot.send_message(query.from_user.id, "You selected the first menu option.")
     elif menu_code == '2':
-        # Handle the second menu option
         await bot.send_message(query.from_user.id, "You selected the second menu option.")
     elif menu_code == '3':
-        # Handle the third menu option
         await bot.send_message(query.from_user.id, "You selected the third menu option.")
     elif menu_code == '4':
-        # Handle the fourth menu option
         await bot.send_message(query.from_user.id, "You selected the fourth menu option.")
 
     # Remove the menu buttons
