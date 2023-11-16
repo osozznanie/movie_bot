@@ -122,7 +122,7 @@ async def cmd_help(message: types.Message):
     await message.answer("Welcome, please choose your language:")
 
 
-# ========================================= Start ========================================= #
+# ========================================= Testing and Exception Handling =========================================
 async def testing():
     global bot
     try:
