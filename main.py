@@ -1,75 +1,48 @@
-# Description: Main file for bot logic and handlers (client side)
-import asyncio
-import logging
-
-from aiogram import Bot
-from aiogram import Dispatcher
-from aiogram import types
-from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart
-
+import telebot
+from telebot import types
 import config
 
-bot = Bot(config.BOT_TOKEN)
-dp = Dispatcher()
+bot = telebot.TeleBot(config.BOT_TOKEN)
 
 
-# ========================================= Client side ========================================= #
-@dp.message(CommandStart())
-async def cmd_start(message: types.Message):
-    bot_info = await bot.get_me()
-    await message.answer(
-        f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
-        f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML)
+# ====================================== Start ====================================== #
+@bot.message_handler(commands=['start'])
+def cmd_start(message):
+    bot_info = bot.get_me()
+    bot.send_message(message.chat.id,
+                     f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
+                     f"🇷🇺 Пожалуйста, выберите язык",
+                     reply_markup=language_keyboard(),
+                     parse_mode='HTML')
+    bot.send_message(message.chat.id, f"Hi, {message.from_user.id}")
 
 
-# =========================================  Language =========================================  #
+# ====================================== Language ====================================== #
 def language_keyboard():
-    keyboard = [[types.InlineKeyboardButton(text='🇬🇧 English', callback_data='set_language_en')],
-                [types.InlineKeyboardButton(text='🇺🇦 Українська', callback_data='set_language_ua')],
-                [types.InlineKeyboardButton(text='🇷🇺 Русский', callback_data='set_language_ru')], ]
-
-    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    return keyboard_markup
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton('🇬🇧 English', callback_data='set_language_en'))
+    keyboard.add(types.InlineKeyboardButton('🇺🇦 Українська', callback_data='set_language_ua'))
+    keyboard.add(types.InlineKeyboardButton('🇷🇺 Русский', callback_data='set_language_ru'))
+    return keyboard
 
 
-@dp.callback_query(lambda query: query.data.startswith('set_language'))
-async def set_language_callback(query: types.CallbackQuery):
-    language_code = query.data.split('_')[2]
-
-    set_user_language(query.from_user.id, language_code)
-
-    await query.answer(f"Language set to {language_code}")
+# ====================================== Callbacks ====================================== #
+@bot.callback_query_handler(func=lambda call: call.data.startswith('set_language'))
+def set_language_callback(call):
+    language_code = call.data.split('_')[2]
+    set_user_language(call.from_user.id, language_code)
+    bot.answer_callback_query(call.id, f"Language set to {language_code}")
 
 
 def set_user_language(user_id, language_code):
     pass
 
 
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    await message.answer("Welcome, please choose your language:")
+# ====================================== Help ====================================== #
+@bot.message_handler(commands=['help'])
+def cmd_help(message):
+    bot.send_message(message.chat.id, "Welcome, please choose your language:")
 
 
-# ========================================= Start ========================================= #
-async def testing():
-    global bot
-    try:
-        logging.basicConfig(level=logging.INFO)
-        bot = Bot(token=config.BOT_TOKEN)
-        polling_task = asyncio.create_task(dp.start_polling(bot))
-        await polling_task
-    except Exception as e:
-        logging.exception("An error occurred:")
-    finally:
-        logging.info("Bot stopped.")
-        await bot.close()
-
-
-async def main():
-    await testing()
-
-
-if __name__ == '__main__':
-    asyncio.run(main())
+# ====================================== Main ====================================== #
+bot.polling()
