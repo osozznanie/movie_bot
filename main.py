@@ -1,3 +1,4 @@
+# Description: Main file for bot logic and handlers (client side)
 import asyncio
 import logging
 
@@ -5,43 +6,70 @@ from aiogram import Bot
 from aiogram import Dispatcher
 from aiogram import types
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart, Command
-from aiogram.utils import markdown
+from aiogram.filters import Command, CommandStart
 
 import config
 
+bot = Bot(config.BOT_TOKEN)
 dp = Dispatcher()
 
 
+# ========================================= Client side ========================================= #
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
-    await message.answer("Your welcome!\n U can choose some commands:\n /help - to get help\n /smile - to get smile")
+    bot_info = await bot.get_me()
+    await message.answer(
+        f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
+        f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML)
+
+
+# =========================================  Language =========================================  #
+def language_keyboard():
+    keyboard = [[types.InlineKeyboardButton(text='🇬🇧 English', callback_data='set_language_en')],
+                [types.InlineKeyboardButton(text='🇺🇦 Українська', callback_data='set_language_ua')],
+                [types.InlineKeyboardButton(text='🇷🇺 Русский', callback_data='set_language_ru')], ]
+
+    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    return keyboard_markup
+
+
+@dp.callback_query(lambda query: query.data.startswith('set_language'))
+async def set_language_callback(query: types.CallbackQuery):
+    language_code = query.data.split('_')[2]
+
+    set_user_language(query.from_user.id, language_code)
+
+    await query.answer(f"Language set to {language_code}")
+
+
+def set_user_language(user_id, language_code):
+    pass
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
-    await message.answer("U can choose some commands:\n /help - to get help\n /smile - to get smile")
+    await message.answer("Welcome, please choose your language:")
 
 
-@dp.message(Command("smile"))
-async def cmd_smile(message: types.Message):
-    url = "https://i.pinimg.com/564x/21/d0/16/21d01679d38bcf1f940dc27fb7b850f0.jpg"
-    await message.answer(
-
-        text=f"{markdown.hide_link(url)} \n "
-             f"{markdown.hbold(':-)')}\n",
-
-
-        parse_mode=ParseMode.HTML,)
+# ========================================= Start ========================================= #
+async def testing():
+    global bot
+    try:
+        logging.basicConfig(level=logging.INFO)
+        bot = Bot(token=config.BOT_TOKEN)
+        polling_task = asyncio.create_task(dp.start_polling(bot))
+        await polling_task
+    except Exception as e:
+        logging.exception("An error occurred:")
+    finally:
+        logging.info("Bot stopped.")
+        await bot.close()
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
-    bot = Bot(token=config.BOT_TOKEN)
-    await dp.start_polling(bot)
+    await testing()
 
 
-# This handler will be called when user sends `/start` command
 if __name__ == '__main__':
     asyncio.run(main())
-
