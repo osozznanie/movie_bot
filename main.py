@@ -8,8 +8,7 @@ from aiogram import Dispatcher
 from aiogram import types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
-import telebot
-
+from tmdbsimple import Discover, Genres
 
 import api
 import config
@@ -18,7 +17,6 @@ tmdb.API_KEY = api.TMDB_API_KEY
 bot = Bot(config.BOT_TOKEN)
 dp = Dispatcher(bot=bot)
 TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'
-bot2 = telebot.TeleBot(config.BOT_TOKEN)
 
 
 # ========================================= Client side ========================================= #
@@ -72,21 +70,72 @@ async def set_menu_callback(query: types.CallbackQuery):
         await bot.send_message(query.from_user.id, "You selected the fourth menu option.")
 
 
-@bot2.callback_query_handler(func=lambda call: call.data.startswith('submenu_option'))
-def set_submenu_callback(call):
+@dp.callback_query(lambda query: query.data.startswith('submenu_option'))
+async def set_submenu_callback(call):
     submenu_code = call.data.split('_')[2]
     language_code = call.data.split('_')[3]
 
     if submenu_code == '1':
-        # Fetch popular movies
-        movies = tmdb.Movies()
-        popular_movies = movies.popular(language=language_code)
+        discover = Discover()
+        response = discover.movie(language=language_code)
 
-        # Send a message with the title and poster of each movie
-        for movie in popular_movies['results']:
+        genres_api = Genres()
+        genres_response = genres_api.movie_list(language=language_code)
+        genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
+
+        for movie in response['results'][:3]:
             title = movie['title']
             poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
-            bot.send_photo(call.message.chat.id, photo=poster_url, caption=title)
+            vote_average = movie['vote_average']
+            genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
+
+            message_text = f'<a href="{poster_url}">{title}</a>\nRating: {vote_average}\nGenres: {", ".join(genre_names)}'
+            await bot.send_message(call.message.chat.id, text=message_text, parse_mode='HTML')
+
+    elif submenu_code == '2':
+        message_text, keyboard_markup = get_rating_mod(language_code)
+        await bot.edit_message_text(message_text,
+                                    chat_id=call.from_user.id,
+                                    message_id=call.message.message_id,
+                                    reply_markup=keyboard_markup)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))
+async def process_callback_low(callback_query: types.CallbackQuery):
+    discover = tmdb.Discover()
+    response = discover.movie(vote_average_gte=1, vote_average_lte=10, sort_by='vote_average.asc')
+
+    for s in response['results'][:3]:
+        movie = tmdb.Movies(s['id'])
+        response = movie.info()
+        poster_url = f"https://image.tmdb.org/t/p/w500{response['poster_path']}"
+        title = response['title']
+        vote_average = response['vote_average']
+        genre_names = [genre['name'] for genre in response['genres']]
+        message_text = f'<a href="{poster_url}">{title}</a>\nRating: {vote_average}\nGenres: {", ".join(genre_names)}'
+        await bot.send_message(callback_query.from_user.id, text=message_text, parse_mode='HTML')
+
+    await bot.answer_callback_query(callback_query.id)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high'))
+async def process_callback_high(callback_query: types.CallbackQuery):
+    discover = tmdb.Discover()
+    response = discover.movie(vote_average_gte=1, vote_average_lte=10, sort_by='vote_average.desc')
+
+    for s in response['results'][:4]:
+        movie = tmdb.Movies(s['id'])
+        response = movie.info()
+        vote_average = response['vote_average']
+        if vote_average == 0:
+            continue
+        poster_url = f"https://image.tmdb.org/t/p/w500{response['poster_path']}"
+        title = response['title']
+        genre_names = [genre['name'] for genre in response['genres']]
+        message_text = f'<a href="{poster_url}">{title}</a>\nRating: {vote_average}\nGenres: {", ".join(genre_names)}'
+        await bot.send_message(callback_query.from_user.id, text=message_text, parse_mode='HTML')
+
+    await bot.answer_callback_query(callback_query.id)
 
 
 def get_next_action_message(language_code):
@@ -96,6 +145,24 @@ def get_next_action_message(language_code):
         'ru': '<b>Меню\n</b>Пожалуйста, выберите следующее действие:',
     }
     return messages.get(language_code, 'Please select the next action')
+
+
+def get_rating_mod(language_code):
+    options = {
+        'en': ['Starting from low', 'Starting from high'],
+        'ua': ['Починаючи з низького', 'Починаючи з високого'],
+        'ru': ['Начиная с низкого', 'Начиная с высокого'],
+    }
+
+    option_texts = options.get(language_code, options['en'])
+
+    keyboard = [
+        [types.InlineKeyboardButton(text=option_texts[0], callback_data=f'sort_option_low_{language_code}')],
+        [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'sort_option_high_{language_code}')]
+    ]
+    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    return "Please select an option:", keyboard_markup
 
 
 def language_keyboard():
