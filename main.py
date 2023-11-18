@@ -2,19 +2,23 @@
 import asyncio
 import logging
 
+import tmdbsimple as tmdb
 from aiogram import Bot
 from aiogram import Dispatcher
 from aiogram import types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
+import telebot
 
-from aiogram.types import CallbackQuery
 
+import api
 import config
-import requests
 
+tmdb.API_KEY = api.TMDB_API_KEY
 bot = Bot(config.BOT_TOKEN)
 dp = Dispatcher(bot=bot)
+TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'
+bot2 = telebot.TeleBot(config.BOT_TOKEN)
 
 
 # ========================================= Client side ========================================= #
@@ -54,19 +58,35 @@ dp.callback_query(lambda query: query.data.startswith('menu_option'))
 @dp.callback_query(lambda query: query.data.startswith('menu_option'))
 async def set_menu_callback(query: types.CallbackQuery):
     menu_code = query.data.split('_')[2]
-    language_code = query.data.split('_')[2]
+    language_code = query.data.split('_')[3]
 
-    if menu_code == '1':
-        await bot.send_message(query.from_user.id, "You selected the first menu option.")
-    elif menu_code == '2':
-        await bot.send_message(query.from_user.id, "You selected the second menu option.")
+    if menu_code == '1' or menu_code == '2':
+        keyboard_markup = submenu_keyboard(language_code)
+        await bot.edit_message_text("Please select an option:",
+                                    chat_id=query.from_user.id,
+                                    message_id=query.message.message_id,
+                                    reply_markup=keyboard_markup)
     elif menu_code == '3':
         await bot.send_message(query.from_user.id, "You selected the third menu option.")
     elif menu_code == '4':
         await bot.send_message(query.from_user.id, "You selected the fourth menu option.")
 
-    # Remove the menu buttons
-    await bot.edit_message_reply_markup(query.from_user.id, query.message.message_id)
+
+@bot2.callback_query_handler(func=lambda call: call.data.startswith('submenu_option'))
+def set_submenu_callback(call):
+    submenu_code = call.data.split('_')[2]
+    language_code = call.data.split('_')[3]
+
+    if submenu_code == '1':
+        # Fetch popular movies
+        movies = tmdb.Movies()
+        popular_movies = movies.popular(language=language_code)
+
+        # Send a message with the title and poster of each movie
+        for movie in popular_movies['results']:
+            title = movie['title']
+            poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
+            bot.send_photo(call.message.chat.id, photo=poster_url, caption=title)
 
 
 def get_next_action_message(language_code):
@@ -106,6 +126,26 @@ def menu_keyboard(language_code):
             types.InlineKeyboardButton(text=option_texts[2], callback_data=f'menu_option_3_{language_code}'),
             types.InlineKeyboardButton(text=option_texts[3], callback_data=f'menu_option_4_{language_code}'),
         ]
+    ]
+    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    return keyboard_markup
+
+
+def submenu_keyboard(language_code):
+    options = {
+        'en': ['Popular Now', 'By TMDB Rating', 'By Genre'],
+        'ua': ['Популярне зараз', 'За рейтингом TMDB', 'За жанром'],
+        'ru': ['Популярно сейчас', 'По рейтингу TMDB', 'По жанру'],
+    }
+
+    option_texts = options.get(language_code, options['en'])
+
+    keyboard = [
+        [types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{language_code}')],
+        [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{language_code}')],
+        [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{language_code}')]
+
     ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
