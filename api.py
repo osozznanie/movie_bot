@@ -1,2 +1,5 @@
+import tmdb
 
-TMDB_API_KEY = 'a535bcba0d8c195dde178e69478394ee'
+from config import TMDB_API_KEY
+
+tmdb.API_KEY = TMDB_API_KEY
