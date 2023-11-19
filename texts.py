@@ -1,4 +1,3 @@
-# texts.py
 TEXTS = {
     'en': {
         'select_language': 'Please select language:',
