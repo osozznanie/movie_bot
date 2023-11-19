@@ -1,0 +1,36 @@
+# texts.py
+TEXTS = {
+    'en': {
+        'select_language': 'Please select language:',
+        'select_menu': 'Please select menu:',
+        'selected_language': 'You have selected English language 🇬🇧',
+        'third_menu_option': 'You selected the third menu option.',
+        'fourth_menu_option': 'You selected the fourth menu option.',
+        'next_action': '<b>Menu\n</b>Please select the next action:',
+        'select_option': 'Please select an option:',
+        'starting_low': 'Starting from low',
+        'starting_high': 'Starting from high',
+    },
+    'ua': {
+        'select_language': 'Будь ласка, виберіть мову:',
+        'select_menu': 'Будь ласка, виберіть меню:',
+        'selected_language': '<b>Ви обрали українську мову </b>🇺🇦',
+        'third_menu_option': 'Ви обрали третю опцію меню.',
+        'fourth_menu_option': 'Ви обрали четверту опцію меню.',
+        'next_action': '<b>Меню\n</b>Будь ласка, виберіть наступну дію:',
+        'select_option': 'Будь ласка, виберіть опцію:',
+        'starting_low': 'Починаючи з низького',
+        'starting_high': 'Починаючи з високого',
+    },
+    'ru': {
+        'select_language': 'Пожалуйста, выберите язык:',
+        'select_menu': 'Пожалуйста, выберите меню:',
+        'selected_language': 'Вы выбрали русский язык 🇷🇺',
+        'third_menu_option': 'Вы выбрали третью опцию меню.',
+        'fourth_menu_option': 'Вы выбрали четвертую опцию меню.',
+        'next_action': '<b>Меню\n</b>Пожалуйста, выберите следующее действие:',
+        'select_option': 'Пожалуйста, выберите опцию:',
+        'starting_low': 'Начиная с низкого',
+        'starting_high': 'Начиная с высокого',
+    },
+}

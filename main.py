@@ -2,6 +2,7 @@
 import asyncio
 import logging
 
+import requests
 import tmdbsimple as tmdb
 from aiogram import Bot
 from aiogram import Dispatcher
@@ -9,6 +10,7 @@ from aiogram import types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from tmdbsimple import Discover, Genres
+from texts import TEXTS
 
 import api
 import config
@@ -34,23 +36,26 @@ user_languages = {}
 
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
-    await message.answer("Please select language:", reply_markup=language_keyboard())
+    language_code = user_languages.get(message.from_user.id, 'en')
+    await message.answer(TEXTS[language_code]['select_language'], reply_markup=language_keyboard())
 
 
 @dp.callback_query(lambda query: query.data.startswith('set_language'))
 async def set_language_callback(query: types.CallbackQuery):
     language_code = query.data.split('_')[2]
+
+    select_menu = TEXTS[language_code]['select_menu']
+
     set_user_language(query.from_user.id, language_code)
-    next_action_message = get_next_action_message(language_code)
-    await bot.send_message(query.from_user.id, next_action_message, reply_markup=menu_keyboard(language_code),
+    selected_language = TEXTS[language_code]['selected_language']
+
+    await bot.send_message(query.from_user.id, select_menu, reply_markup=menu_keyboard(language_code),
                            parse_mode=ParseMode.HTML)
     await bot.answer_callback_query(query.id, f"Language set to {language_code}")
 
-    # Remove the menu buttons
     await bot.edit_message_reply_markup(query.from_user.id, query.message.message_id)
-
-
-dp.callback_query(lambda query: query.data.startswith('menu_option'))
+    await bot.edit_message_text(chat_id=query.from_user.id, message_id=query.message.message_id,
+                                text=selected_language, parse_mode=ParseMode.HTML)
 
 
 @dp.callback_query(lambda query: query.data.startswith('menu_option'))
@@ -58,9 +63,11 @@ async def set_menu_callback(query: types.CallbackQuery):
     menu_code = query.data.split('_')[2]
     language_code = query.data.split('_')[3]
 
+    select_option_text = TEXTS[language_code]['select_option']
+
     if menu_code == '1' or menu_code == '2':
         keyboard_markup = submenu_keyboard(language_code)
-        await bot.edit_message_text("Please select an option:",
+        await bot.edit_message_text(select_option_text,
                                     chat_id=query.from_user.id,
                                     message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
@@ -100,69 +107,59 @@ async def set_submenu_callback(call):
                                     reply_markup=keyboard_markup)
 
 
-@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))
-async def process_callback_low(callback_query: types.CallbackQuery):
+async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote_count: int):
     discover = tmdb.Discover()
-    response = discover.movie(vote_average_gte=1, vote_average_lte=10, sort_by='vote_average.asc')
+    response = discover.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count)
 
-    for s in response['results'][:3]:
-        movie = tmdb.Movies(s['id'])
-        response = movie.info()
-        poster_url = f"https://image.tmdb.org/t/p/w500{response['poster_path']}"
-        title = response['title']
-        vote_average = response['vote_average']
-        genre_names = [genre['name'] for genre in response['genres']]
-        message_text = f'<a href="{poster_url}">{title}</a>\nRating: {vote_average}\nGenres: {", ".join(genre_names)}'
-        await bot.send_message(callback_query.from_user.id, text=message_text, parse_mode='HTML')
+    sorted_movies = response['results'][:3]
+
+    movies_str = '\n'.join([f"{movie['title']} (Rating: {movie['vote_average']})" for movie in sorted_movies])
+
+    for movie in sorted_movies:
+        title = movie['title']
+        rating = movie['vote_average']
+        poster_path = movie['poster_path']
+        poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
+
+        await bot.send_message(
+            chat_id=callback_query.from_user.id,
+            text=f"{title} (Rating: {rating})\nPoster: {poster_url}"
+        )
 
     await bot.answer_callback_query(callback_query.id)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))
+async def process_callback_low(callback_query: types.CallbackQuery):
+    await send_movies(callback_query, 'asc', 1000)
+    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high'))
 async def process_callback_high(callback_query: types.CallbackQuery):
-    discover = tmdb.Discover()
-    response = discover.movie(vote_average_gte=1, vote_average_lte=10, sort_by='vote_average.desc')
-
-    for s in response['results'][:4]:
-        movie = tmdb.Movies(s['id'])
-        response = movie.info()
-        vote_average = response['vote_average']
-        if vote_average == 0:
-            continue
-        poster_url = f"https://image.tmdb.org/t/p/w500{response['poster_path']}"
-        title = response['title']
-        genre_names = [genre['name'] for genre in response['genres']]
-        message_text = f'<a href="{poster_url}">{title}</a>\nRating: {vote_average}\nGenres: {", ".join(genre_names)}'
-        await bot.send_message(callback_query.from_user.id, text=message_text, parse_mode='HTML')
-
-    await bot.answer_callback_query(callback_query.id)
+    await send_movies(callback_query, 'desc', 1000)
+    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
-def get_next_action_message(language_code):
-    messages = {
-        'en': '<b>Menu\n</b>Please select the next action:',
-        'ua': '<b>Меню\n</b>Будь ласка, виберіть наступну дію:',
-        'ru': '<b>Меню\n</b>Пожалуйста, выберите следующее действие:',
-    }
-    return messages.get(language_code, 'Please select the next action')
+# def get_next_action_message(language_code):
+#     messages = {
+#         'en': '<b>Menu\n</b>Please select the next action:',
+#         'ua': '<b>Меню\n</b>Будь ласка, виберіть наступну дію:',
+#         'ru': '<b>Меню\n</b>Пожалуйста, выберите следующее действие:',
+#     }
+#     return messages.get(language_code, 'Please select the next action')
 
 
-def get_rating_mod(language_code):
-    options = {
-        'en': ['Starting from low', 'Starting from high'],
-        'ua': ['Починаючи з низького', 'Починаючи з високого'],
-        'ru': ['Начиная с низкого', 'Начиная с высокого'],
-    }
-
-    option_texts = options.get(language_code, options['en'])
+def get_rating_mod(language_code, text_key='select_option'):
+    options = TEXTS[language_code].get(text_key, TEXTS['en'][text_key])
 
     keyboard = [
-        [types.InlineKeyboardButton(text=option_texts[0], callback_data=f'sort_option_low_{language_code}')],
-        [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'sort_option_high_{language_code}')]
+        [types.InlineKeyboardButton(text=options[0], callback_data=f'sort_option_low_{language_code}')],
+        [types.InlineKeyboardButton(text=options[1], callback_data=f'sort_option_high_{language_code}')]
     ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-    return "Please select an option:", keyboard_markup
+    return TEXTS[language_code][text_key], keyboard_markup
 
 
 def language_keyboard():
@@ -227,6 +224,18 @@ def set_user_language(user_id, language_code):
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message):
     await message.answer("Welcome, please choose your language:")
+
+
+# =========================================  Menu =========================================  #
+
+@dp.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    user_id = message.from_user.id
+    language_code = user_languages.get(user_id, 'en')
+
+    menu_message = TEXTS[language_code]['select_menu']
+
+    await message.answer(menu_message, reply_markup=menu_keyboard(language_code))
 
 
 # ========================================= Testing and Exception Handling =========================================
