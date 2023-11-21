@@ -13,9 +13,10 @@ TEXTS = {
         'title': 'Title',
         'rating': 'Rating',
         'genres': 'Genres',
-        'submenu_keyboard': ['Popular Now', 'By TMDB Rating', 'By Genre', 'Use filters'],
+        'submenu_keyboard': ['Popular Now', 'By TMDB Rating','Use filters'],
         'menu_keyboard': ['Movies', 'Series', 'Randomizer', 'Saved'],
         'LANGUAGE_CODES': 'en-US',
+        'select_genre': 'Select a genre',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -31,9 +32,10 @@ TEXTS = {
         'title': 'Назва',
         'rating': 'Рейтинг',
         'genres': 'Жанри',
-        'submenu_keyboard': ['Популярне зараз', 'За рейтингом TMDB', 'За жанром', 'Використовувати фільтри'],
+        'submenu_keyboard': ['Популярне зараз', 'За рейтингом TMDB', 'Використовувати фільтри'],
         'menu_keyboard': ['Фільми', 'Серіали', 'Рандомайзер', 'Збережені'],
         'LANGUAGE_CODES': 'uk-UA',
+        'select_genre': 'Виберіть жанр',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -49,8 +51,10 @@ TEXTS = {
         'title': 'Название',
         'rating': 'Рейтинг',
         'genres': 'Жанры',
-        'submenu_keyboard': ['Популярно сейчас', 'По рейтингу TMDB', 'По жанру', 'Использовать фильтры'],
+        'submenu_keyboard': ['Популярно сейчас', 'По рейтингу TMDB', 'Использовать фильтры'],
         'menu_keyboard': ['Фильмы', 'Сериалы', 'Рандомайзер', 'Сохраненные'],
         'LANGUAGE_CODES': 'ru-RU',
+        'select_genre': 'Выберите жанр',
+
     },
 }
