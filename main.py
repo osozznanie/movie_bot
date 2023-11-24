@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import random
+from datetime import datetime
 
 import requests
 import tmdbsimple as tmdb
@@ -23,6 +24,14 @@ dp = Dispatcher(bot=bot)
 TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'
 shown_movies = set()
 
+# ========================================= Variable for filters ========================================= #
+genre_names_filter = {}
+# --------------
+user_genre_choice = {}
+user_release_date_choice = {}
+user_vote_count_choice = {}
+user_rating_choice = {}
+
 # ========================================= Keyboard ========================================= #
 
 kb = [
@@ -37,7 +46,8 @@ kb = [
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     bot_info = await bot.get_me()
-
+    print(user_genre_choice)
+    print(user_release_date_choice)
     await message.answer(
         f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
         f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML)
@@ -80,7 +90,7 @@ async def set_menu_callback(query: types.CallbackQuery):
     select_option_text = get_text(language_code, 'select_option')
 
     if menu_code == '1' or menu_code == '2':
-        keyboard_markup = submenu_keyboard(tmdb_language_code)
+        keyboard_markup = submenu_keyboard(language_code)
         await bot.edit_message_text(select_option_text,
                                     chat_id=query.from_user.id,
                                     message_id=query.message.message_id,
@@ -198,77 +208,200 @@ async def set_submenu_callback(call):
                                     message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
     elif submenu_code == '3':
-        page = 0
-        genres_api = Genres()
-        genres_response = genres_api.movie_list(language=tmdb_language_code)
-        genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
-
-        keyboard = [
-            [types.InlineKeyboardButton(text=genre_name, callback_data=f'filter_genre_{genre_id}_{language_code}')]
-            for genre_id, genre_name in get_genres_page(genres, page)
-        ]
-
-        if len(genres) > GENRES_PER_PAGE:
-            keyboard.append([
-                types.InlineKeyboardButton(text='<<', callback_data=f'prev_page_{page}_{language_code}'),
-                types.InlineKeyboardButton(text='>>', callback_data=f'next_page_{page}_{language_code}')
-            ])
-
-        keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-        message_text = get_text(language_code, 'select_genre')
-        await bot.edit_message_text(message_text,
+        message_text, keyboard_markup = generate_filter_submenu(language_code)
+        await bot.edit_message_text(text=message_text,
                                     chat_id=call.from_user.id,
                                     message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
 
 
-GENRES_PER_PAGE = 5
+def generate_filter_submenu(language_code):
+    submenu_texts = get_text(language_code, 'filter_submenu')
+
+    text = get_text(language_code, 'select_option')
+    buttons = [
+        [
+            InlineKeyboardButton(text=submenu_texts[0], callback_data=f'filter_genre_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[1], callback_data=f'filter_releaseDate_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=submenu_texts[2], callback_data=f'filter_voteCount_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')
+        ]
+    ]
+    keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    return text, keyboard_markup
 
 
-def get_genres_page(genres, page):
-    start = page * GENRES_PER_PAGE
-    end = start + GENRES_PER_PAGE
-    return list(genres.items())[start:end]
-
-
-@dp.callback_query(lambda query: query.data.startswith('next_page') or query.data.startswith('prev_page'))
-async def navigate_pages(call):
-    action, _, page, *language_code = call.data.split('_')
-    page = int(page)
-    language_code = '_'.join(language_code)
+@dp.callback_query(lambda query: query.data.startswith('filter_genre_'))
+async def process_callback_filter_genre(call: types.CallbackQuery):
+    language_code = call.data.split('_')[2]
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     genres_api = Genres()
-    genres_response = genres_api.movie_list(language=get_text(language_code, 'LANGUAGE_CODES'))
+    genres_response = genres_api.movie_list(language=tmdb_language_code)
+    genre_names_filter[call.from_user.id] = {genre['id']: genre['name'] for genre in genres_response['genres']}
+
+    logging.info(f"genre_names_filter: {genre_names_filter}")
+
+    await generate_genre_submenu(call, tmdb_language_code)
+
+
+@dp.callback_query(lambda query: query.data.startswith('genre_'))
+async def process_callback_genre(call: types.CallbackQuery):
+    chosen_genre_id = int(call.data.split('_')[1])
+
+    if call.from_user.id in genre_names_filter:
+        chosen_genre_name = genre_names_filter[call.from_user.id].get(chosen_genre_id, "Unknown genre")
+    else:
+        chosen_genre_name = "Unknown genre"
+
+    user_genre_choice[call.from_user.id] = chosen_genre_id
+
+    language_code = "ru"
+    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    await bot.send_message(call.from_user.id, f"You chose genre {chosen_genre_name}")
+    await bot.edit_message_text(text=message_text,
+                                chat_id=call.from_user.id,
+                                message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
+    await bot.send_message(call.from_user.id, f"Вы выбрали жанр, вы можете добавить еще "
+                                              f"фильтры или нажать 'Поск' для "
+                                              f"получения результата")
+    await call.answer(show_alert=False)
+
+
+@dp.callback_query(lambda query: query.data.startswith('filter_releaseDate_'))
+async def process_callback_filter_release_date(call: types.CallbackQuery):
+    language_code = call.data.split('_')[2]
+    release_date_keyboard = [
+        [
+            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
+                                 callback_data=f'release_date_before_1980_{language_code}'),
+            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][1],
+                                 callback_data=f'release_date_1980_2000_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
+                                 callback_data=f'release_date_2000_2020_{language_code}'),
+            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
+                                 callback_data=f'release_date_after_2020_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
+                                 callback_data=f'release_date_any_{language_code}')
+        ]
+    ]
+    keyboard_markup = InlineKeyboardMarkup(inline_keyboard=release_date_keyboard)
+    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
+
+    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_releaseDate_txt'),
+                           reply_markup=keyboard_markup)
+
+
+@dp.callback_query(lambda query: query.data.startswith('release_date_'))
+async def process_callback_filter_release_date_choice(call: types.CallbackQuery):
+    chosen_release_date_option = call.data  # Get the whole callback_data
+
+    user_release_date_choice[call.from_user.id] = chosen_release_date_option
+    language_code = "ru"
+    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
+
+    await bot.edit_message_text(text=message_text,
+                                chat_id=call.from_user.id,
+                                message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
+    await call.answer(show_alert=False)
+
+
+async def generate_genre_submenu(call, tmdb_language_code):
+    genres_api = Genres()
+    genres_response = genres_api.movie_list(language=tmdb_language_code)
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
 
-    if action == 'next_page':
-        if page < len(genres) // GENRES_PER_PAGE:
-            page += 1
-        else:
-            return
-    elif action == 'prev_page':
-        if page > 0:
-            page -= 1
-        else:
-            return
+    saved_genres = genres
 
-    # Now update the keyboard to show the new page
-    keyboard = [
-        [types.InlineKeyboardButton(text=genre_name, callback_data=f'filter_genre_{genre_id}_{language_code}')]
-        for genre_id, genre_name in get_genres_page(genres, page)
-    ]
+    buttons = [[InlineKeyboardButton(text=genre_name, callback_data=f'genre_{genre_id}')] for genre_id, genre_name in
+               saved_genres.items()]
+    keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    if len(genres) > GENRES_PER_PAGE:
-        keyboard.append([
-            types.InlineKeyboardButton(text='<<', callback_data=f'prev_page_{page}_{language_code}'),
-            types.InlineKeyboardButton(text='>>', callback_data=f'next_page_{page}_{language_code}')
-        ])
+    message_text = get_text(call.data.split('_')[2], 'select_option')
+    await bot.edit_message_text(text=message_text,
+                                chat_id=call.from_user.id,
+                                message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
 
-    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-    await bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id,
-                                        reply_markup=keyboard_markup)
+@dp.callback_query(lambda query: query.data.startswith('filter_search_'))
+async def process_search(call: types.CallbackQuery):
+    user_id = call.from_user.id
+
+    genre_filter = user_genre_choice.get(user_id)
+    release_date_filter = user_release_date_choice.get(user_id)
+
+    if genre_filter is None and release_date_filter is None:
+        await bot.send_message(user_id,
+                               "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
+    else:
+        # Extract the year from release_date_filter and convert it to the format 'YYYY-MM-DD' if it is not None
+        if release_date_filter is not None:
+            year = release_date_filter.split('_')[2]
+            release_date_filter = f'{year}-01-01'
+
+        movies = search_movies(genre_filter, release_date_filter)
+        print(movies)
+        print(release_date_filter)
+
+        for movie in movies[:2]:
+            await format_movie(user_id, movie)
+
+        user_genre_choice[user_id] = None
+        user_release_date_choice[user_id] = None
+
+    await call.answer(show_alert=False)
+
+
+def search_movies(genre_filter, release_date_after):
+    discover = tmdb.Discover()
+    if genre_filter and release_date_after:
+        response = discover.movie(with_genres=genre_filter, primary_release_date_gte=release_date_after)
+    elif genre_filter:
+        response = discover.movie(with_genres=genre_filter)
+    elif release_date_after:
+        response = discover.movie(primary_release_date_gte=release_date_after)
+    else:
+        response = discover.movie()
+    print(response)  # Add this line
+    return response['results']
+
+
+async def format_movie(user_id, movie):
+    base_url = "https://image.tmdb.org/t/p/w500"
+    poster_path = movie['poster_path']
+    title = movie['title']
+    overview = movie['overview']
+    release_date = movie['release_date']
+    genre_ids = movie['genre_ids']
+
+    genre_names = get_genre_names(genre_ids)
+
+    text = f"Title: {title}\nOverview: {overview}\nRelease Date: {release_date}\nGenres: {', '.join(genre_names)}"
+
+    await bot.send_photo(chat_id=user_id, photo=URLInputFile(base_url + poster_path), caption=text)
+
+
+def get_genre_names(genre_ids):
+    genres = tmdb.Genres()
+    response = genres.movie_list()
+    genre_list = response['genres']
+    genre_dict = {genre['id']: genre['name'] for genre in genre_list}
+    genre_names = [genre_dict[genre_id] for genre_id in genre_ids if genre_id in genre_dict]
+    return genre_names
 
 
 async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote_count: int):

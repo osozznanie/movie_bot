@@ -13,10 +13,19 @@ TEXTS = {
         'title': 'Title',
         'rating': 'Rating',
         'genres': 'Genres',
-        'submenu_keyboard': ['Popular Now', 'By TMDB Rating','Use filters'],
+        'submenu_keyboard': ['Popular Now', 'By TMDB Rating', 'Use filters'],
         'menu_keyboard': ['Movies', 'Series', 'Randomizer', 'Saved'],
         'LANGUAGE_CODES': 'en-US',
         'select_genre': 'Select a genre',
+        'filter_submenu': ['By genre', 'By year', 'By viewer rating', 'By rating', 'Search', 'Back'],
+        'release_date_options': [
+            "Before 1980",
+            "1980-2000",
+            "2000-2020",
+            "After 2020",
+            "Any"
+        ],
+        'filter_releaseDate_txt': 'Choose release date',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -36,6 +45,15 @@ TEXTS = {
         'menu_keyboard': ['Фільми', 'Серіали', 'Рандомайзер', 'Збережені'],
         'LANGUAGE_CODES': 'uk-UA',
         'select_genre': 'Виберіть жанр',
+        'filter_submenu': ['За жанром', 'За роком', 'За рейтингом глядачів', 'За рейтингом', 'Пошук', 'Назад'],
+        'release_date_options': [
+            "до 1980",
+            "1980-2000",
+            "2000-2020",
+            "після 2020",
+            "Без різниці"
+        ],
+        'filter_releaseDate_txt': 'Виберіть дату виходу',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -55,6 +73,14 @@ TEXTS = {
         'menu_keyboard': ['Фильмы', 'Сериалы', 'Рандомайзер', 'Сохраненные'],
         'LANGUAGE_CODES': 'ru-RU',
         'select_genre': 'Выберите жанр',
-
+        'filter_submenu': ['По жанру', 'По году', 'По кол-во оценок', 'По рейтингу', 'Поиск', 'Назад'],
+        'release_date_options': [
+            "до 1980",
+            "1980-2000",
+            "2000-2020",
+            "после 2020",
+            "Без разницы"
+        ],
+        'filter_releaseDate_txt': 'Выберите дату выхода',
     },
 }
