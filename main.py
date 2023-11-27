@@ -1,9 +1,11 @@
-# Description: Main file for bot logic and handlers (client side)
+﻿# Description: Main file for bot logic and handlers (client side)
 import asyncio
 import logging
+import os
 import random
 from datetime import datetime
 
+import psycopg2
 import requests
 import tmdbsimple as tmdb
 from aiogram import Bot
@@ -12,9 +14,12 @@ from aiogram import types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, URLInputFile
+from sqlalchemy import URL, create_engine
+from sqlalchemy.orm import sessionmaker
 from tmdbsimple import Discover, Genres, Movies
 from texts import TEXTS
 
+from db import User, get_session_maker, create_db_async_engine, proceed_schema, BaseModel
 import api
 import config
 
@@ -42,12 +47,27 @@ kb = [
 ]
 
 
+# ========================================= DataBase ========================================= #
+def get_user_language_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT language FROM users WHERE user_id = %s;",
+            (user_id,)
+        )
+        result = cursor.fetchone()
+        if result is not None:
+            return result[0]
+        else:
+            return None
+
+
 # ========================================= Client side ========================================= #
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     bot_info = await bot.get_me()
     print(user_genre_choice)
     print(user_release_date_choice)
+
     await message.answer(
         f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
         f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML)
@@ -59,13 +79,27 @@ user_languages = {}
 
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
-    language_code = user_languages.get(message.from_user.id, 'en')
+    language_code = get_user_language_from_db(message.from_user.id)
+    print(language_code)
+
     await message.answer(TEXTS[language_code]['select_language'], reply_markup=language_keyboard())
 
 
 @dp.callback_query(lambda query: query.data.startswith('set_language'))
 async def set_language_callback(query: types.CallbackQuery):
     language_code = query.data.split('_')[2]
+
+    user_id = query.from_user.id
+    username = query.from_user.username
+    language = language_code
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO users (user_id, username, language, reg_date, update_date) "
+            "VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE) "
+            "ON CONFLICT (user_id) DO UPDATE SET language = %s, update_date = CURRENT_DATE;",
+            (user_id, username, language, language)
+        )
 
     select_menu = TEXTS[language_code]['select_menu']
 
@@ -563,17 +597,47 @@ async def cmd_menu(message: types.Message):
 
 # ========================================= Testing and Exception Handling =========================================
 async def testing():
-    global bot
+    global bot, connection
     try:
         logging.basicConfig(level=logging.INFO)
+
+        connection = psycopg2.connect(
+            host=config.host,
+            database=os.getenv("db_name"),
+            password=os.getenv("db_pass"),
+            user=os.getenv("db_user"),
+            port=os.getenv("db_port")
+        )
+        connection.autocommit = True
+
+        cursor = connection.cursor()
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT version();")
+            print("Server version:", cursor.fetchone())
+
+        # create table
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "CREATE TABLE IF NOT EXISTS users ("
+                "user_id SERIAL PRIMARY KEY, "
+                "username VARCHAR(32) NOT NULL, "
+                "language VARCHAR(5), "
+                "saved_movies VARCHAR(5),"
+                " reg_date DATE, "
+                "update_date DATE);")
+            print("Table created successfully")
 
         bot = Bot(token=config.BOT_TOKEN)
         polling_task = asyncio.create_task(dp.start_polling(bot))
         await polling_task
     except Exception as e:
         logging.exception("An error occurred:")
+        print(e)
     finally:
         logging.info("Bot stopped.")
+        connection.close()
+        await bot.close()
 
 
 async def main():
