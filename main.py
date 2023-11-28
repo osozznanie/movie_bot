@@ -65,8 +65,6 @@ def get_user_language_from_db(user_id):
 @dp.message(CommandStart())
 async def cmd_start(message: types.Message):
     bot_info = await bot.get_me()
-    print(user_genre_choice)
-    print(user_release_date_choice)
 
     await message.answer(
         f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
@@ -80,7 +78,7 @@ user_languages = {}
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
-    print(language_code)
+    print("[INFO] cmd_language " + language_code)
 
     await message.answer(TEXTS[language_code]['select_language'], reply_markup=language_keyboard())
 
@@ -92,6 +90,7 @@ async def set_language_callback(query: types.CallbackQuery):
     user_id = query.from_user.id
     username = query.from_user.username
     language = language_code
+    print("[INFO] set_language_callback " + language_code)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -118,7 +117,7 @@ async def set_language_callback(query: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data.startswith('menu_option'))
 async def set_menu_callback(query: types.CallbackQuery):
     menu_code = query.data.split('_')[2]
-    language_code = query.data.split('_')[3]
+    language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     select_option_text = get_text(language_code, 'select_option')
@@ -160,7 +159,7 @@ async def set_menu_callback(query: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('another_random'))
 async def show_another_random_movie(query: types.CallbackQuery):
-    language_code = user_languages.get(query.from_user.id, 'en')
+    language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     discover = Discover()
@@ -211,7 +210,7 @@ async def show_another_random_movie(query: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data.startswith('submenu_option'))
 async def set_submenu_callback(call):
     submenu_code = call.data.split('_')[2]
-    language_code = call.data.split('_')[3]
+    language_code = get_user_language_from_db(call.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     if submenu_code == '1':
@@ -273,7 +272,7 @@ def generate_filter_submenu(language_code):
 
 @dp.callback_query(lambda query: query.data.startswith('filter_genre_'))
 async def process_callback_filter_genre(call: types.CallbackQuery):
-    language_code = call.data.split('_')[2]
+    language_code = get_user_language_from_db(call.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     genres_api = Genres()
@@ -296,7 +295,7 @@ async def process_callback_genre(call: types.CallbackQuery):
 
     user_genre_choice[call.from_user.id] = chosen_genre_id
 
-    language_code = "ru"
+    language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
     await bot.send_message(call.from_user.id, f"You chose genre {chosen_genre_name}")
     await bot.edit_message_text(text=message_text,
@@ -311,7 +310,7 @@ async def process_callback_genre(call: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('filter_releaseDate_'))
 async def process_callback_filter_release_date(call: types.CallbackQuery):
-    language_code = call.data.split('_')[2]
+    language_code = get_user_language_from_db(call.from_user.id)
     release_date_keyboard = [
         [
             InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
@@ -342,7 +341,7 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
     chosen_release_date_option = call.data  # Get the whole callback_data
 
     user_release_date_choice[call.from_user.id] = chosen_release_date_option
-    language_code = "ru"
+    language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
     await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
 
@@ -439,7 +438,7 @@ def get_genre_names(genre_ids):
 
 
 async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote_count: int):
-    language_code = callback_query.data.split('_')[3]
+    language_code = get_user_language_from_db(callback_query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     discover = tmdb.Discover()
@@ -588,7 +587,7 @@ async def cmd_help(message: types.Message):
 @dp.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     user_id = message.from_user.id
-    language_code = user_languages.get(user_id, 'en')
+    language_code = get_user_language_from_db(user_id)
 
     menu_message = TEXTS[language_code]['select_menu']
 
