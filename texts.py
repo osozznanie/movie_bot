@@ -26,6 +26,10 @@ TEXTS = {
             "Any"
         ],
         'filter_releaseDate_txt': 'Choose release date',
+        'movies': 'Movies',
+        'series': 'Series',
+        'back': 'Back',
+        'save': 'Save',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -54,6 +58,10 @@ TEXTS = {
             "Без різниці"
         ],
         'filter_releaseDate_txt': 'Виберіть дату виходу',
+        'movies': 'Фільми',
+        'series': 'Серіали',
+        'back': 'Назад',
+        'save': 'Зберегти',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -82,5 +90,9 @@ TEXTS = {
             "Без разницы"
         ],
         'filter_releaseDate_txt': 'Выберите дату выхода',
+        'movies': 'Фильмы',
+        'series': 'Сериалы',
+        'back': 'Назад',
+        'save': 'Сохранить',
     },
 }

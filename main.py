@@ -3,10 +3,8 @@ import asyncio
 import logging
 import os
 import random
-from datetime import datetime
 
 import psycopg2
-import requests
 import tmdbsimple as tmdb
 from aiogram import Bot
 from aiogram import Dispatcher
@@ -14,12 +12,9 @@ from aiogram import types
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, URLInputFile
-from sqlalchemy import URL, create_engine
-from sqlalchemy.orm import sessionmaker
-from tmdbsimple import Discover, Genres, Movies
+from tmdbsimple import Discover, Genres
 from texts import TEXTS
 
-from db import User, get_session_maker, create_db_async_engine, proceed_schema, BaseModel
 import api
 import config
 
@@ -37,6 +32,12 @@ user_release_date_choice = {}
 user_vote_count_choice = {}
 user_rating_choice = {}
 
+
+# ========================================= Print =========================================  #
+def print_info(message):
+    print(f"[INFO] {message}")
+
+
 # ========================================= Keyboard ========================================= #
 
 kb = [
@@ -48,6 +49,40 @@ kb = [
 
 
 # ========================================= DataBase ========================================= #
+async def setup_database():
+    global connection
+    connection = psycopg2.connect(
+        host=config.host,
+        database=os.getenv("db_name"),
+        password=os.getenv("db_pass"),
+        user=os.getenv("db_user"),
+        port=os.getenv("db_port")
+    )
+    connection.autocommit = True
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT version();")
+        print("Server version:", cursor.fetchone())
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS users ("
+            "user_id SERIAL PRIMARY KEY, "
+            "username VARCHAR(32) NOT NULL, "
+            "language VARCHAR(5), "
+            " reg_date DATE, "
+            "update_date DATE);")
+        print("Table 'users' created successfully")
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS saved_movies ("
+            "user_id INT, "
+            "movie_id INT, "
+            "PRIMARY KEY (user_id, movie_id));")
+        print("Table 'saved_movies' created successfully")
+
+
 def get_user_language_from_db(user_id):
     with connection.cursor() as cursor:
         cursor.execute(
@@ -59,6 +94,36 @@ def get_user_language_from_db(user_id):
             return result[0]
         else:
             return None
+
+
+def get_saved_movies_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT * FROM saved_movies WHERE user_id = %s;",
+            (user_id,)
+        )
+        return cursor.fetchall()
+
+
+def update_user_language_from_db(user_id, username, language):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO users (user_id, username, language, reg_date, update_date) "
+            "VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE) "
+            "ON CONFLICT (user_id) DO UPDATE SET language = %s, update_date = CURRENT_DATE;",
+            (user_id, username, language, language)
+        )
+
+
+def save_movie_to_db(user_id, movie_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO saved_movies (user_id, movie_id) "
+            "VALUES (%s, %s) "
+            "ON CONFLICT (user_id, movie_id) DO NOTHING;",
+            (user_id, movie_id)
+        )
 
 
 # ========================================= Client side ========================================= #
@@ -78,8 +143,7 @@ user_languages = {}
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
-    print("[INFO] cmd_language " + language_code)
-
+    print_info(f"User {message.from_user.id} chose language {language_code} = cmd_language")
     await message.answer(TEXTS[language_code]['select_language'], reply_markup=language_keyboard())
 
 
@@ -90,19 +154,13 @@ async def set_language_callback(query: types.CallbackQuery):
     user_id = query.from_user.id
     username = query.from_user.username
     language = language_code
-    print("[INFO] set_language_callback " + language_code)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO users (user_id, username, language, reg_date, update_date) "
-            "VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE) "
-            "ON CONFLICT (user_id) DO UPDATE SET language = %s, update_date = CURRENT_DATE;",
-            (user_id, username, language, language)
-        )
-
+    update_user_language_from_db(user_id, username, language)
+    print_info(f"User {user_id} chose language {language_code} = set_language_callback")
     select_menu = TEXTS[language_code]['select_menu']
 
     set_user_language(query.from_user.id, language_code)
+
     selected_language = TEXTS[language_code]['selected_language']
 
     await bot.send_message(query.from_user.id, select_menu, reply_markup=menu_keyboard(language_code),
@@ -121,6 +179,8 @@ async def set_menu_callback(query: types.CallbackQuery):
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     select_option_text = get_text(language_code, 'select_option')
+
+    print_info(f"User {query.from_user.id} chose menu option {menu_code} = set_menu_callback")
 
     if menu_code == '1' or menu_code == '2':
         keyboard_markup = submenu_keyboard(language_code)
@@ -154,7 +214,18 @@ async def set_menu_callback(query: types.CallbackQuery):
                              parse_mode='HTML')
         await query.answer(show_alert=False)
     elif menu_code == '4':
-        await bot.send_message(query.from_user.id, "You selected the fourth menu option.")
+        movies_text = get_text(language_code, 'movies')
+        series_text = get_text(language_code, 'series')
+        back_text = get_text(language_code, 'back')
+
+        movies_button = types.InlineKeyboardButton(text=movies_text, callback_data='saved_movies')
+        series_button = types.InlineKeyboardButton(text=series_text, callback_data='saved_series')
+        back_button = types.InlineKeyboardButton(text=back_text, callback_data='back')
+
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[movies_button, series_button], [back_button]])
+
+        await bot.send_message(chat_id=query.from_user.id, text=select_option_text, reply_markup=keyboard)
+        await query.answer(show_alert=False)
 
 
 @dp.callback_query(lambda query: query.data.startswith('another_random'))
@@ -230,8 +301,12 @@ async def set_submenu_callback(call):
 
             message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
 
+            save_text = get_text(language_code, 'save')
+            save_button = InlineKeyboardButton(text=save_text, callback_data=f'save_{movie["id"]}')
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[save_button]])
+
             await bot.send_photo(call.message.chat.id, photo=img, caption=message_text,
-                                 parse_mode='HTML')
+                                 parse_mode='HTML', reply_markup=keyboard)
             await call.answer(show_alert=False)
 
     elif submenu_code == '2':
@@ -246,6 +321,17 @@ async def set_submenu_callback(call):
                                     chat_id=call.from_user.id,
                                     message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
+
+
+@dp.callback_query(lambda c: c.data.startswith('save_'))
+async def process_callback_save(callback_query: types.CallbackQuery):
+    movie_id = callback_query.data.split('_')[1]
+    user_id = callback_query.from_user.id
+
+    save_movie_to_db(user_id, movie_id)
+
+    save_text = get_text(get_user_language_from_db(user_id), 'save')
+    await bot.answer_callback_query(callback_query.id, save_text)
 
 
 def generate_filter_submenu(language_code):
@@ -381,7 +467,6 @@ async def process_search(call: types.CallbackQuery):
         await bot.send_message(user_id,
                                "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
     else:
-        # Extract the year from release_date_filter and convert it to the format 'YYYY-MM-DD' if it is not None
         if release_date_filter is not None:
             year = release_date_filter.split('_')[2]
             release_date_filter = f'{year}-01-01'
@@ -545,6 +630,21 @@ def get_message_text_for_card_from_TMDB(lang, title, vote_average, genre_names):
     return f'{title_text}: {title}\n{rating_text}: {vote_average}\n{genres_text}: {", ".join(genre_names)}'
 
 
+def get_movie_details_from_tmdb(movie_id, language_code):
+    movie = tmdb.Movies(movie_id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    response = movie.info(language=tmdb_language_code)
+
+    print_info(f"Movie details: {response}")
+
+    title = response['title']
+    poster_path = response['poster_path']
+    vote_average = response['vote_average']
+    genres = response['genres']
+
+    return title, poster_path, vote_average, genres
+
+
 def get_text(lang, key):
     return TEXTS.get(lang, TEXTS['en']).get(key, '')
 
@@ -567,13 +667,39 @@ def set_user_language(user_id, language_code):
     user_languages[user_id] = language_code
 
 
-@dp.callback_query(lambda c: c.data)
-async def process_callback(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, f"You chose option {callback_query.data}")
+# ========================================= Saved movies =========================================  #
+@dp.callback_query(lambda c: c.data == 'saved_movies')
+async def show_saved_movies(call):
+    user_id = call.from_user.id
+    saved_movies = get_saved_movies_from_db(user_id)
+    user_language = get_user_language_from_db(user_id)
 
+    for movie in saved_movies:
+        movie_id = movie[1]
+        title, poster_path, vote_average, genres = get_movie_details_from_tmdb(movie_id, user_language)
 
-# ========================================= Button =========================================  #
+        poster_url = 'https://image.tmdb.org/t/p/w500' + poster_path
+        img = URLInputFile(poster_url)
+        genre_names = [genre['name'] for genre in genres]
+
+        message_text = get_message_text_for_card_from_TMDB(user_language, title, vote_average, genre_names)
+
+        await bot.send_photo(call.message.chat.id, photo=img, caption=message_text,
+                             parse_mode='HTML')
+    await call.answer(show_alert=False)
+
+# ========================================= Back =========================================  #
+@dp.callback_query(lambda query: query.data == 'back')
+async def set_back_callback(query: types.CallbackQuery):
+    language_code = get_user_language_from_db(query.from_user.id)
+
+    select_option_text = get_text(language_code, 'select_option')
+
+    print_info(f"User {query.from_user.id} chose back option = set_back_callback")
+    await bot.edit_message_text(select_option_text,
+                                chat_id=query.from_user.id,
+                                message_id=query.message.message_id,
+                                reply_markup=menu_keyboard(language_code))
 
 
 # =========================================  Help =========================================  #
@@ -583,7 +709,6 @@ async def cmd_help(message: types.Message):
 
 
 # =========================================  Menu =========================================  #
-
 @dp.message(Command("menu"))
 async def cmd_menu(message: types.Message):
     user_id = message.from_user.id
@@ -594,38 +719,20 @@ async def cmd_menu(message: types.Message):
     await message.answer(menu_message, reply_markup=menu_keyboard(language_code))
 
 
-# ========================================= Testing and Exception Handling =========================================
+# ========================================= Another =========================================  #
+@dp.callback_query(lambda c: c.data)
+async def process_callback(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, f"You chose option {callback_query.data}")
+
+
+# ========================================= Testing and Exception Handling ========================================= #
 async def testing():
-    global bot, connection
+    global bot
     try:
         logging.basicConfig(level=logging.INFO)
 
-        connection = psycopg2.connect(
-            host=config.host,
-            database=os.getenv("db_name"),
-            password=os.getenv("db_pass"),
-            user=os.getenv("db_user"),
-            port=os.getenv("db_port")
-        )
-        connection.autocommit = True
-
-        cursor = connection.cursor()
-
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT version();")
-            print("Server version:", cursor.fetchone())
-
-        # create table
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "CREATE TABLE IF NOT EXISTS users ("
-                "user_id SERIAL PRIMARY KEY, "
-                "username VARCHAR(32) NOT NULL, "
-                "language VARCHAR(5), "
-                "saved_movies VARCHAR(5),"
-                " reg_date DATE, "
-                "update_date DATE);")
-            print("Table created successfully")
+        await setup_database()
 
         bot = Bot(token=config.BOT_TOKEN)
         polling_task = asyncio.create_task(dp.start_polling(bot))
