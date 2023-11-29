@@ -30,6 +30,7 @@ TEXTS = {
         'series': 'Series',
         'back': 'Back',
         'save': 'Save',
+        'delete': 'Delete',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -62,6 +63,7 @@ TEXTS = {
         'series': 'Серіали',
         'back': 'Назад',
         'save': 'Зберегти',
+        'delete': 'Видалити'
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -94,5 +96,6 @@ TEXTS = {
         'series': 'Сериалы',
         'back': 'Назад',
         'save': 'Сохранить',
+        'delete': 'Удалить'
     },
 }
