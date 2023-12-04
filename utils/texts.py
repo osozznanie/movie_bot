@@ -13,7 +13,7 @@ TEXTS = {
         'title': 'Title',
         'rating': 'Rating',
         'genres': 'Genres',
-        'submenu_keyboard': ['Popular Now', 'By TMDB Rating', 'Use filters'],
+        'submenu_keyboard': ['Popular Now', 'By TMDB Rating', 'Use filters', 'Back'],
         'menu_keyboard': ['Movies', 'Series', 'Randomizer', 'Saved'],
         'LANGUAGE_CODES': 'en-US',
         'select_genre': 'Select a genre',
@@ -31,6 +31,7 @@ TEXTS = {
         'back': 'Back',
         'save': 'Save',
         'delete': 'Delete',
+        'another': 'Another',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -46,7 +47,7 @@ TEXTS = {
         'title': 'Назва',
         'rating': 'Рейтинг',
         'genres': 'Жанри',
-        'submenu_keyboard': ['Популярне зараз', 'За рейтингом TMDB', 'Використовувати фільтри'],
+        'submenu_keyboard': ['Популярне зараз', 'За рейтингом TMDB', 'Використовувати фільтри', 'Назад'],
         'menu_keyboard': ['Фільми', 'Серіали', 'Рандомайзер', 'Збережені'],
         'LANGUAGE_CODES': 'uk-UA',
         'select_genre': 'Виберіть жанр',
@@ -63,7 +64,8 @@ TEXTS = {
         'series': 'Серіали',
         'back': 'Назад',
         'save': 'Зберегти',
-        'delete': 'Видалити'
+        'delete': 'Видалити',
+        'another': 'Інший',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -79,7 +81,7 @@ TEXTS = {
         'title': 'Название',
         'rating': 'Рейтинг',
         'genres': 'Жанры',
-        'submenu_keyboard': ['Популярно сейчас', 'По рейтингу TMDB', 'Использовать фильтры'],
+        'submenu_keyboard': ['Популярно сейчас', 'По рейтингу TMDB', 'Использовать фильтры', 'Назад'],
         'menu_keyboard': ['Фильмы', 'Сериалы', 'Рандомайзер', 'Сохраненные'],
         'LANGUAGE_CODES': 'ru-RU',
         'select_genre': 'Выберите жанр',
@@ -96,6 +98,7 @@ TEXTS = {
         'series': 'Сериалы',
         'back': 'Назад',
         'save': 'Сохранить',
-        'delete': 'Удалить'
+        'delete': 'Удалить',
+        'another': 'Другой',
     },
 }

@@ -1,3 +1,5 @@
+import random
+
 import tmdbsimple as tmdb
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile
@@ -58,6 +60,16 @@ async def send_next_movies(chat_id, language_code):
 
     await bot.send_message(chat_id, "Click 'Next' to load next 5 movies or 'Reset' to start over",
                            reply_markup=keyboard)
+
+
+async def reset_movies(chat_id):
+    global current_page
+    global current_movie
+
+    current_page = 1
+    current_movie = 0
+
+    await bot.send_message(chat_id, "The movie list has been reset. Click 'Next' to load the first 5 movies.")
 
 
 def generate_filter_submenu(language_code):
@@ -229,7 +241,7 @@ def submenu_keyboard(language_code):
     keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{language_code}')],
                 [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{language_code}')],
                 [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{language_code}')],
-
+                [types.InlineKeyboardButton(text=option_texts[3], callback_data=f'back')]
                 ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
@@ -252,3 +264,56 @@ async def send_option_message(query, language_code, select_option_text):
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[movies_button, series_button], [back_button]])
 
     await bot.send_message(chat_id=query.from_user.id, text=select_option_text, reply_markup=keyboard)
+
+
+shown_movies = set()
+movies = tmdb.Movies()
+page_number = 1
+
+
+async def get_next_movie():
+    global shown_movies
+    global page_number
+
+    while True:
+        popular_movies = movies.popular(page=page_number)
+
+        unshown_movies = [movie for movie in popular_movies['results'] if movie['id'] not in shown_movies]
+
+        if not unshown_movies:
+            shown_movies = set()
+            page_number += 1
+            continue
+
+        random_movie = random.choice(unshown_movies)
+        shown_movies.add(random_movie['id'])
+
+        return random_movie
+
+
+async def send_random_movie(query, language_code, tmdb_language_code):
+    random_movie = await get_next_movie()
+
+    movie = tmdb.Movies(random_movie['id'])
+    movie_info = movie.info(language=tmdb_language_code)
+
+    title = movie_info['title']
+    poster_url = 'https://image.tmdb.org/t/p/w500' + movie_info['poster_path']
+    vote_average = movie_info['vote_average']
+    genre_names = [genre['name'] for genre in movie_info['genres']]
+
+    message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
+
+    keyboard = create_keyboard(random_movie["id"], language_code, 'save')
+    another_button = create_keyboard(random_movie["id"], language_code, 'another')
+
+    keyboard.inline_keyboard.append(another_button.inline_keyboard[0])
+
+    if query.message:
+        await bot.delete_message(chat_id=query.from_user.id, message_id=query.message.message_id)
+
+    await bot.send_photo(chat_id=query.from_user.id, photo=URLInputFile(poster_url), caption=message_text,
+                         reply_markup=keyboard,
+                         parse_mode='HTML')
+
+    await query.answer(show_alert=False)
