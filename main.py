@@ -40,15 +40,8 @@ def print_info(message):
 
 # ========================================= Keyboard ========================================= #
 
-kb = [
-    [
-        types.KeyboardButton(text='menu'),
-        types.KeyboardButton(text='language')
-    ],
-    [
-        types.KeyboardButton(text='saved'),
-    ]
-]
+kb = [[types.KeyboardButton(text='menu'), types.KeyboardButton(text='language')],
+      [types.KeyboardButton(text='saved'), ]]
 
 
 # ========================================= Handler for menu keyboard ========================================= #
@@ -66,13 +59,8 @@ async def language_command(message: types.Message):
 # ========================================= DataBase ========================================= #
 async def setup_database():
     global connection
-    connection = psycopg2.connect(
-        host=config.host,
-        database=os.getenv("db_name"),
-        password=os.getenv("db_pass"),
-        user=os.getenv("db_user"),
-        port=os.getenv("db_port")
-    )
+    connection = psycopg2.connect(host=config.host, database=os.getenv("db_name"), password=os.getenv("db_pass"),
+                                  user=os.getenv("db_user"), port=os.getenv("db_port"))
     connection.autocommit = True
 
     with connection.cursor() as cursor:
@@ -80,30 +68,25 @@ async def setup_database():
         print("Server version:", cursor.fetchone())
 
     with connection.cursor() as cursor:
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS users ("
-            "user_id SERIAL PRIMARY KEY, "
-            "username VARCHAR(32) NOT NULL, "
-            "language VARCHAR(5), "
-            " reg_date DATE, "
-            "update_date DATE);")
+        cursor.execute("CREATE TABLE IF NOT EXISTS users ("
+                       "user_id SERIAL PRIMARY KEY, "
+                       "username VARCHAR(32) NOT NULL, "
+                       "language VARCHAR(5), "
+                       " reg_date DATE, "
+                       "update_date DATE);")
         print("Table 'users' created successfully")
 
     with connection.cursor() as cursor:
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS saved_movies ("
-            "user_id INT, "
-            "movie_id INT, "
-            "PRIMARY KEY (user_id, movie_id));")
+        cursor.execute("CREATE TABLE IF NOT EXISTS saved_movies ("
+                       "user_id INT, "
+                       "movie_id INT, "
+                       "PRIMARY KEY (user_id, movie_id));")
         print("Table 'saved_movies' created successfully")
 
 
 def get_user_language_from_db(user_id):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT language FROM users WHERE user_id = %s;",
-            (user_id,)
-        )
+        cursor.execute("SELECT language FROM users WHERE user_id = %s;", (user_id,))
         result = cursor.fetchone()
         if result is not None:
             return result[0]
@@ -113,41 +96,30 @@ def get_user_language_from_db(user_id):
 
 def get_saved_movies_from_db(user_id):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT * FROM saved_movies WHERE user_id = %s;",
-            (user_id,)
-        )
+        cursor.execute("SELECT * FROM saved_movies WHERE user_id = %s;", (user_id,))
         return cursor.fetchall()
 
 
 def update_user_language_from_db(user_id, username, language):
     with connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO users (user_id, username, language, reg_date, update_date) "
-            "VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE) "
-            "ON CONFLICT (user_id) DO UPDATE SET language = %s, update_date = CURRENT_DATE;",
-            (user_id, username, language, language)
-        )
+        cursor.execute("INSERT INTO users (user_id, username, language, reg_date, update_date) "
+                       "VALUES (%s, %s, %s, CURRENT_DATE, CURRENT_DATE) "
+                       "ON CONFLICT (user_id) DO UPDATE SET language = %s, update_date = CURRENT_DATE;",
+                       (user_id, username, language, language))
 
 
 def save_movie_to_db(user_id, movie_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
-        cursor.execute(
-            "INSERT INTO saved_movies (user_id, movie_id) "
-            "VALUES (%s, %s) "
-            "ON CONFLICT (user_id, movie_id) DO NOTHING;",
-            (user_id, movie_id)
-        )
+        cursor.execute("INSERT INTO saved_movies (user_id, movie_id) "
+                       "VALUES (%s, %s) "
+                       "ON CONFLICT (user_id, movie_id) DO NOTHING;", (user_id, movie_id))
 
 
 def delete_movie_from_db(user_id, movie_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
-        cursor.execute(
-            "DELETE FROM saved_movies WHERE user_id = %s AND movie_id = %s;",
-            (user_id, movie_id)
-        )
+        cursor.execute("DELETE FROM saved_movies WHERE user_id = %s AND movie_id = %s;", (user_id, movie_id))
 
 
 # ========================================= Client side ========================================= #
@@ -158,22 +130,16 @@ async def cmd_start(message: types.Message):
 
     user_language = get_user_language_from_db(user_id)
 
-    keyboard = types.ReplyKeyboardMarkup(
-        keyboard=kb,
-        resize_keyboard=True,
-    )
+    keyboard = types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, )
 
     if user_language:
         await message.answer(
             f"You have set your language to <b>{user_language}</b>. If you want to change it, use the language button.",
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
+            reply_markup=keyboard, parse_mode=ParseMode.HTML)
     else:
         await message.answer(
             f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
-            f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML
-        )
+            f"🇷🇺 Пожалуйста, выберите язык", reply_markup=language_keyboard(), parse_mode=ParseMode.HTML)
 
 
 # ========================================= Language =========================================  #
@@ -208,8 +174,8 @@ async def set_language_callback(query: types.CallbackQuery):
     await bot.answer_callback_query(query.id, f"Language set to {language_code}")
 
     await bot.edit_message_reply_markup(query.from_user.id, query.message.message_id)
-    await bot.edit_message_text(chat_id=query.from_user.id, message_id=query.message.message_id,
-                                text=selected_language, parse_mode=ParseMode.HTML)
+    await bot.edit_message_text(chat_id=query.from_user.id, message_id=query.message.message_id, text=selected_language,
+                                parse_mode=ParseMode.HTML)
 
 
 @dp.callback_query(lambda query: query.data.startswith('menu_option'))
@@ -224,9 +190,7 @@ async def set_menu_callback(query: types.CallbackQuery):
 
     if menu_code == '1' or menu_code == '2':
         keyboard_markup = submenu_keyboard(language_code)
-        await bot.edit_message_text(select_option_text,
-                                    chat_id=query.from_user.id,
-                                    message_id=query.message.message_id,
+        await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
     elif menu_code == '3':
         movies = tmdb.Movies()
@@ -247,10 +211,7 @@ async def set_menu_callback(query: types.CallbackQuery):
         another_button = types.InlineKeyboardButton(text="Another", callback_data='another_random')
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[another_button]])
 
-        await bot.send_photo(chat_id=query.from_user.id,
-                             photo=img,
-                             caption=message_text,
-                             reply_markup=keyboard,
+        await bot.send_photo(chat_id=query.from_user.id, photo=img, caption=message_text, reply_markup=keyboard,
                              parse_mode='HTML')
         await query.answer(show_alert=False)
     elif menu_code == '4':
@@ -267,8 +228,7 @@ async def show_another_random_movie(query: types.CallbackQuery):
     unshown_movies = []
 
     while not unshown_movies and page <= 100:
-        response = discover.movie(vote_count_gte=1000, vote_average_gte=5,
-                                  language=tmdb_language_code, page=page)
+        response = discover.movie(vote_count_gte=1000, vote_average_gte=5, language=tmdb_language_code, page=page)
 
         if not response['results']:
             await bot.send_message(query.from_user.id, "No movies found that meet the criteria.")
@@ -316,41 +276,74 @@ async def set_submenu_callback(call):
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     if submenu_code == '1':
-        discover = Discover()
-        response = discover.movie(language=tmdb_language_code)
-
-        genres_api = Genres()
-        genres_response = genres_api.movie_list(language=tmdb_language_code)
-        genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
-
-        for movie in response['results'][:4]:
-            title = movie['title']
-            poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
-            img = URLInputFile(poster_url)
-            vote_average = movie['vote_average']
-            genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
-
-            message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
-
-            keyboard = create_keyboard(movie["id"], language_code, 'save')
-
-            await bot.send_photo(call.message.chat.id, photo=img, caption=message_text,
-                                 parse_mode='HTML', reply_markup=keyboard)
-            await call.answer(show_alert=False)
+        await send_next_movies(call.message.chat.id, language_code)
 
     elif submenu_code == '2':
         message_text, keyboard_markup = get_rating_mod(language_code)
-        await bot.edit_message_text(message_text,
-                                    chat_id=call.from_user.id,
-                                    message_id=call.message.message_id,
+        await bot.edit_message_text(message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
     elif submenu_code == '3':
         message_text, keyboard_markup = generate_filter_submenu(language_code)
-        await bot.edit_message_text(text=message_text,
-                                    chat_id=call.from_user.id,
-                                    message_id=call.message.message_id,
+        await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
 
+
+current_page = 1
+current_movie = 0
+
+
+async def send_next_movies(chat_id, language_code):
+    global current_page
+    global current_movie
+
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    movies = tmdb.Movies()
+    response = movies.popular(language=tmdb_language_code, page=current_page)
+
+    genres_api = Genres()
+    genres_response = genres_api.movie_list(language=tmdb_language_code)
+    genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
+
+    for movie in response['results'][current_movie:current_movie + 5]:
+        title = movie['title']
+        poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
+        img = URLInputFile(poster_url)
+        vote_average = movie['vote_average']
+        genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
+
+        message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
+
+        keyboard = create_keyboard(movie["id"], language_code, 'save')
+
+        await bot.send_photo(chat_id, photo=img, caption=message_text, parse_mode='HTML', reply_markup=keyboard)
+
+    current_movie += 5
+    if current_movie >= len(response['results']):
+        current_page += 1
+        current_movie = 0
+
+    next_button = types.InlineKeyboardButton(text="Next", callback_data='load_next')
+    reset_button = types.InlineKeyboardButton(text="Reset", callback_data='reset_page')
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
+
+    await bot.send_message(chat_id, "Click 'Next' to load next 5 movies or 'Reset' to start over",
+                           reply_markup=keyboard)
+
+
+@dp.callback_query(lambda query: query.data.startswith('load_next'))
+async def load_next_movies_callback(call):
+    language_code = get_user_language_from_db(call.from_user.id)
+    await send_next_movies(call.message.chat.id, language_code)
+
+
+@dp.callback_query(lambda query: query.data.startswith('reset_page'))
+async def reset_page_callback(call):
+    global current_page
+    global current_movie
+    current_page = 1
+    current_movie = 0
+    language_code = get_user_language_from_db(call.from_user.id)
+    await send_next_movies(call.message.chat.id, language_code)
 
 @dp.callback_query(lambda c: c.data.startswith('save_'))
 async def process_callback_save(callback_query: types.CallbackQuery):
@@ -367,20 +360,12 @@ def generate_filter_submenu(language_code):
     submenu_texts = get_text(language_code, 'filter_submenu')
 
     text = get_text(language_code, 'select_option')
-    buttons = [
-        [
-            InlineKeyboardButton(text=submenu_texts[0], callback_data=f'filter_genre_{language_code}'),
-            InlineKeyboardButton(text=submenu_texts[1], callback_data=f'filter_releaseDate_{language_code}')
-        ],
-        [
-            InlineKeyboardButton(text=submenu_texts[2], callback_data=f'filter_voteCount_{language_code}'),
-            InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{language_code}')
-        ],
-        [
-            InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
-            InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')
-        ]
-    ]
+    buttons = [[InlineKeyboardButton(text=submenu_texts[0], callback_data=f'filter_genre_{language_code}'),
+                InlineKeyboardButton(text=submenu_texts[1], callback_data=f'filter_releaseDate_{language_code}')],
+               [InlineKeyboardButton(text=submenu_texts[2], callback_data=f'filter_voteCount_{language_code}'),
+                InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{language_code}')],
+               [InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
+                InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
     return text, keyboard_markup
 
@@ -413,9 +398,7 @@ async def process_callback_genre(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
     await bot.send_message(call.from_user.id, f"You chose genre {chosen_genre_name}")
-    await bot.edit_message_text(text=message_text,
-                                chat_id=call.from_user.id,
-                                message_id=call.message.message_id,
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
     await bot.send_message(call.from_user.id, f"Вы выбрали жанр, вы можете добавить еще "
                                               f"фильтры или нажать 'Поск' для "
@@ -426,24 +409,16 @@ async def process_callback_genre(call: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data.startswith('filter_releaseDate_'))
 async def process_callback_filter_release_date(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
-    release_date_keyboard = [
-        [
-            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
-                                 callback_data=f'release_date_before_1980_{language_code}'),
-            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][1],
-                                 callback_data=f'release_date_1980_2000_{language_code}')
-        ],
-        [
-            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
-                                 callback_data=f'release_date_2000_2020_{language_code}'),
-            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
-                                 callback_data=f'release_date_after_2020_{language_code}')
-        ],
-        [
-            InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
-                                 callback_data=f'release_date_any_{language_code}')
-        ]
-    ]
+    release_date_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
+                                                   callback_data=f'release_date_before_1980_{language_code}'),
+                              InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][1],
+                                                   callback_data=f'release_date_1980_2000_{language_code}')], [
+                                 InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
+                                                      callback_data=f'release_date_2000_2020_{language_code}'),
+                                 InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
+                                                      callback_data=f'release_date_after_2020_{language_code}')], [
+                                 InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
+                                                      callback_data=f'release_date_any_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=release_date_keyboard)
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
@@ -460,9 +435,7 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
     await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
 
-    await bot.edit_message_text(text=message_text,
-                                chat_id=call.from_user.id,
-                                message_id=call.message.message_id,
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
     await call.answer(show_alert=False)
 
@@ -479,9 +452,7 @@ async def generate_genre_submenu(call, tmdb_language_code):
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     message_text = get_text(call.data.split('_')[2], 'select_option')
-    await bot.edit_message_text(text=message_text,
-                                chat_id=call.from_user.id,
-                                message_id=call.message.message_id,
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
 
 
@@ -575,8 +546,8 @@ async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote
 
         keyboard = create_keyboard(movie["id"], language_code, 'save')
 
-        await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text,
-                             parse_mode='HTML', reply_markup=keyboard)
+        await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text, parse_mode='HTML',
+                             reply_markup=keyboard)
 
     await bot.answer_callback_query(callback_query.id)
 
@@ -584,8 +555,7 @@ async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))
 async def process_callback_low(callback_query: types.CallbackQuery):
     await send_movies(callback_query, 'asc', 1000)
-    await bot.delete_message(chat_id=callback_query.from_user.id,
-                             message_id=callback_query.message.message_id)
+    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high'))
@@ -603,10 +573,8 @@ def get_rating_mod(language_code, text_key_low='starting_low', text_key_high='st
     option_high = texts.get(text_key_high, default_texts[text_key_high])
     select_option = texts.get(text_key_option, default_texts[text_key_option])
 
-    keyboard = [
-        [types.InlineKeyboardButton(text=option_low, callback_data=f'sort_option_low_{language_code}')],
-        [types.InlineKeyboardButton(text=option_high, callback_data=f'sort_option_high_{language_code}')],
-    ]
+    keyboard = [[types.InlineKeyboardButton(text=option_low, callback_data=f'sort_option_low_{language_code}')],
+                [types.InlineKeyboardButton(text=option_high, callback_data=f'sort_option_high_{language_code}')], ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return select_option, keyboard_markup
@@ -625,16 +593,10 @@ def language_keyboard():
 def menu_keyboard(language_code):
     option_texts = get_text(language_code, 'menu_keyboard')
 
-    keyboard = [
-        [
-            types.InlineKeyboardButton(text=option_texts[0], callback_data=f'menu_option_1_{language_code}'),
-            types.InlineKeyboardButton(text=option_texts[1], callback_data=f'menu_option_2_{language_code}'),
-        ],
-        [
-            types.InlineKeyboardButton(text=option_texts[2], callback_data=f'menu_option_3_{language_code}'),
-            types.InlineKeyboardButton(text=option_texts[3], callback_data=f'menu_option_4_{language_code}'),
-        ]
-    ]
+    keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'menu_option_1_{language_code}'),
+                 types.InlineKeyboardButton(text=option_texts[1], callback_data=f'menu_option_2_{language_code}'), ],
+                [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'menu_option_3_{language_code}'),
+                 types.InlineKeyboardButton(text=option_texts[3], callback_data=f'menu_option_4_{language_code}'), ]]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return keyboard_markup
@@ -670,12 +632,11 @@ def get_text(lang, key):
 def submenu_keyboard(language_code):
     option_texts = get_text(language_code, 'submenu_keyboard')
 
-    keyboard = [
-        [types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{language_code}')],
-        [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{language_code}')],
-        [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{language_code}')],
+    keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{language_code}')],
+                [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{language_code}')],
+                [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{language_code}')],
 
-    ]
+                ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return keyboard_markup
@@ -704,8 +665,8 @@ async def show_saved_movies(call):
 
         keyboard = create_keyboard(movie_id, user_language, 'delete')
 
-        await bot.send_photo(call.message.chat.id, photo=img, caption=message_text,
-                             parse_mode='HTML', reply_markup=keyboard)
+        await bot.send_photo(call.message.chat.id, photo=img, caption=message_text, parse_mode='HTML',
+                             reply_markup=keyboard)
     await call.answer(show_alert=False)
 
 
@@ -744,9 +705,7 @@ async def set_back_callback(query: types.CallbackQuery):
     select_option_text = get_text(language_code, 'select_option')
 
     print_info(f"User {query.from_user.id} chose back option = set_back_callback")
-    await bot.edit_message_text(select_option_text,
-                                chat_id=query.from_user.id,
-                                message_id=query.message.message_id,
+    await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                 reply_markup=menu_keyboard(language_code))
 
 
