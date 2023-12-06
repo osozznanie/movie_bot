@@ -37,8 +37,8 @@ async def setup_database():
                        "user_id INT UNIQUE, "
                        "genre_id INT, "
                        "year_range VARCHAR(255) DEFAULT 'any', "
-                       "user_rating FLOAT DEFAULT 0.0, "
-                       "rating FLOAT DEFAULT 0.0);")
+                       "user_rating VARCHAR(255) DEFAULT 'any', "
+                       "rating INT DEFAULT 0);")
         print("Table 'search_movie' created successfully")
 
 
@@ -56,6 +56,25 @@ def get_saved_movies_from_db(user_id):
     with connection.cursor() as cursor:
         cursor.execute("SELECT * FROM saved_movies WHERE user_id = %s;", (user_id,))
         return cursor.fetchall()
+
+
+def get_filters_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT genre_id, year_range, user_rating, rating FROM search_movie WHERE user_id = %s;", (user_id,))
+        result = cursor.fetchone()
+        if result is not None:
+            return {
+                'genre': result[0],
+                'release_date': result[1],
+                'user_rating': result[2]
+            }
+        else:
+            return None
+
+def reset_filters_in_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;", (user_id,))
+        connection.commit()
 
 
 def update_user_language_from_db(user_id, username, language):
@@ -96,6 +115,7 @@ def save_fields_to_table_search_movie_db(user_id, genre_id=None, year_range=None
                        f"VALUES (%s, %s, %s, %s, %s) "
                        f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
                        [user_id, genre_id, year_range, user_rating, rating] + update_values)
+
 
 def delete_movie_from_db(user_id, movie_id):
     connection.autocommit = True

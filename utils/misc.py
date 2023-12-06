@@ -102,14 +102,22 @@ async def generate_genre_submenu(call, tmdb_language_code):
                                 reply_markup=keyboard_markup)
 
 
-def search_movies(genre_filter, release_date_after):
+def search_movies(genre_filter, release_date_after, user_rating):
     discover = tmdb.Discover()
-    if genre_filter and release_date_after:
+    if genre_filter and release_date_after and user_rating:
+        response = discover.movie(with_genres=genre_filter, primary_release_date_gte=release_date_after, vote_average_gte=user_rating)
+    elif genre_filter and release_date_after:
         response = discover.movie(with_genres=genre_filter, primary_release_date_gte=release_date_after)
+    elif genre_filter and user_rating:
+        response = discover.movie(with_genres=genre_filter, vote_average_gte=user_rating)
+    elif release_date_after and user_rating:
+        response = discover.movie(primary_release_date_gte=release_date_after, vote_average_gte=user_rating)
     elif genre_filter:
         response = discover.movie(with_genres=genre_filter)
     elif release_date_after:
         response = discover.movie(primary_release_date_gte=release_date_after)
+    elif user_rating:
+        response = discover.movie(vote_average_gte=user_rating)
     else:
         response = discover.movie()
     print(response)

@@ -171,6 +171,7 @@ async def process_callback_save(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id, save_text)
 
 
+# ========================================= Filter =========================================  #
 @dp.callback_query(lambda query: query.data.startswith('filter_genre_'))
 async def process_callback_filter_genre(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
@@ -196,7 +197,8 @@ async def process_callback_genre(call: types.CallbackQuery):
 
     # user_genre_choice[call.from_user.id] = chosen_genre_id
 
-    save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None, rating=None)
+    save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
+                                         rating=None)
 
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
@@ -245,30 +247,103 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
     await call.answer(show_alert=False)
 
 
+@dp.callback_query(lambda query: query.data.startswith('filter_voteCount_'))
+async def process_callback_filter_vote_count(call: types.CallbackQuery):
+    language_code = get_user_language_from_db(call.from_user.id)
+    vote_count_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][0],
+                                                 callback_data=f'vote_count_before_500_{language_code}'),
+                            InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][1],
+                                                 callback_data=f'vote_count_500-1000_{language_code}')], [
+                               InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][2],
+                                                    callback_data=f'vote_count_after_1000_{language_code}'),
+                               InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][3],
+                                                    callback_data=f'vote_count_any_{language_code}')]]
+    keyboard_markup = InlineKeyboardMarkup(inline_keyboard=vote_count_keyboard)
+    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
+
+    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_voteCount_txt'),
+                           reply_markup=keyboard_markup)
+
+
+@dp.callback_query(lambda query: query.data.startswith('vote_count_'))
+async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
+    chosen_vote_count_option = call.data
+
+    user_vote_count_choice[call.from_user.id] = chosen_vote_count_option
+    language_code = get_user_language_from_db(call.from_user.id)
+    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    await bot.send_message(call.from_user.id, f"You chose option {chosen_vote_count_option}")
+
+    save_fields_to_table_search_movie_db(call.from_user.id, None, None, chosen_vote_count_option, None)
+
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
+    await call.answer(show_alert=False)
+
+
+@dp.callback_query(lambda query: query.data.startswith('filter_rating_'))
+async def process_callback_filter_rating(call: types.CallbackQuery):
+    language_code = get_user_language_from_db(call.from_user.id)
+    rating_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['starting_low'],
+                                             callback_data=f'sort_option_-1_{language_code}'),
+                        InlineKeyboardButton(text=TEXTS[language_code]['starting_high'],
+                                             callback_data=f'sort_option_1_{language_code}')]]
+    keyboard_markup = InlineKeyboardMarkup(inline_keyboard=rating_keyboard)
+    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
+
+    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_rating_txt'),
+                           reply_markup=keyboard_markup)
+
+
+@dp.callback_query(lambda query: query.data.startswith('sort_option_'))
+async def process_callback_sort_option(call: types.CallbackQuery):
+    chosen_sort_option = call.data.split('_')[2]
+    language_code = get_user_language_from_db(call.from_user.id)
+    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    await bot.send_message(call.from_user.id, f"You chose option {chosen_sort_option}")
+
+    save_fields_to_table_search_movie_db(call.from_user.id, None, None, None, chosen_sort_option)
+
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
+    await call.answer(show_alert=False)
+
+
 @dp.callback_query(lambda query: query.data.startswith('filter_search_'))
 async def process_search(call: types.CallbackQuery):
     user_id = call.from_user.id
 
-    genre_filter = user_genre_choice.get(user_id)
-    release_date_filter = user_release_date_choice.get(user_id)
+    # Fetch filters from the database
+    filters = get_filters_from_db(user_id)
 
-    if genre_filter is None and release_date_filter is None:
+    print_info(f"Filters: {filters}")
+
+    if filters is None:
         await bot.send_message(user_id,
                                "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
     else:
-        if release_date_filter is not None:
-            year = release_date_filter.split('_')[2]
-            release_date_filter = f'{year}-01-01'
+        genre_filter = filters.get('genre')
+        release_date_filter = filters.get('release_date')
+        user_rating_filter = filters.get('user_rating')
 
-        movies = search_movies(genre_filter, release_date_filter)
-        print(movies)
-        print(release_date_filter)
+        if not any([genre_filter, release_date_filter, user_rating_filter]):
+            await bot.send_message(user_id,
+                                   "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
+        else:
+            if release_date_filter is not None:
+                year = release_date_filter.split('_')[2]
+                release_date_filter = f'{year}-01-01'
 
-        for movie in movies[:2]:
-            await format_movie(user_id, movie)
+            # Search for movies using the filters
+            movies = search_movies(genre_filter, release_date_filter, user_rating_filter)
 
-        user_genre_choice[user_id] = None
-        user_release_date_choice[user_id] = None
+            for movie in movies[:2]:
+                # Format and send the movie information
+               await format_movie(user_id=user_id, movie=movie)
+
+
+            # Reset the filters in the database
+            reset_filters_in_db(user_id)
 
     await call.answer(show_alert=False)
 
