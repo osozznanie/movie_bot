@@ -1,6 +1,7 @@
 ﻿# Description: Main file for bot logic and handlers (client side)
 import asyncio
 import logging
+import config
 
 from aiogram import Bot
 from aiogram import Dispatcher
