@@ -194,7 +194,9 @@ async def process_callback_genre(call: types.CallbackQuery):
     else:
         chosen_genre_name = "Unknown genre"
 
-    user_genre_choice[call.from_user.id] = chosen_genre_id
+    # user_genre_choice[call.from_user.id] = chosen_genre_id
+
+    save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None, rating=None)
 
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
@@ -213,9 +215,9 @@ async def process_callback_filter_release_date(call: types.CallbackQuery):
     release_date_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
                                                    callback_data=f'release_date_before_1980_{language_code}'),
                               InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][1],
-                                                   callback_data=f'release_date_1980_2000_{language_code}')], [
+                                                   callback_data=f'release_date_1981-2000_{language_code}')], [
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
-                                                      callback_data=f'release_date_2000_2020_{language_code}'),
+                                                      callback_data=f'release_date_2001-2020_{language_code}'),
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
                                                       callback_data=f'release_date_after_2020_{language_code}')], [
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
@@ -235,6 +237,8 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
     await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
+
+    save_fields_to_table_search_movie_db(call.from_user.id, None, chosen_release_date_option, None, None)
 
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
