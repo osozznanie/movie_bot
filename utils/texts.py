@@ -32,6 +32,14 @@ TEXTS = {
         'save': 'Save',
         'delete': 'Delete',
         'another': 'Another',
+        'vote_count_options': [
+            "To 500",
+            "From 500 to 1000",
+            "From 1000",
+            "Any"
+        ],
+        'filter_voteCount_txt': 'Choose vote count',
+        'filter_rating_txt': 'Choose rating',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -66,6 +74,14 @@ TEXTS = {
         'save': 'Зберегти',
         'delete': 'Видалити',
         'another': 'Інший',
+        'vote_count_options': [
+            "До 500",
+            "Від 500 до 1000",
+            "Від 1000",
+            "Будь-який"
+        ],
+        'filter_voteCount_txt': 'Виберіть кількість оцінок',
+        'filter_rating_txt': 'Виберіть рейтинг',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -100,5 +116,13 @@ TEXTS = {
         'save': 'Сохранить',
         'delete': 'Удалить',
         'another': 'Другой',
+        'vote_count_options': [
+            "До 500",
+            "От 500 до 1000",
+            "От 1000",
+            "Любой"
+        ],
+        'filter_voteCount_txt': 'Выберите кол-во оценок',
+        'filter_rating_txt': 'Выберите рейтинг',
     },
 }
