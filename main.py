@@ -195,8 +195,6 @@ async def process_callback_genre(call: types.CallbackQuery):
     else:
         chosen_genre_name = "Unknown genre"
 
-    # user_genre_choice[call.from_user.id] = chosen_genre_id
-
     save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
                                          rating=None)
 
@@ -215,13 +213,13 @@ async def process_callback_genre(call: types.CallbackQuery):
 async def process_callback_filter_release_date(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
     release_date_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][0],
-                                                   callback_data=f'release_date_before_1980_{language_code}'),
+                                                   callback_data=f'release_date_1700-1980_{language_code}'),
                               InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][1],
                                                    callback_data=f'release_date_1981-2000_{language_code}')], [
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
                                                       callback_data=f'release_date_2001-2020_{language_code}'),
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
-                                                      callback_data=f'release_date_after_2020_{language_code}')], [
+                                                      callback_data=f'release_date_2020-2025_{language_code}')], [
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
                                                       callback_data=f'release_date_any_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=release_date_keyboard)
@@ -233,8 +231,7 @@ async def process_callback_filter_release_date(call: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('release_date_'))
 async def process_callback_filter_release_date_choice(call: types.CallbackQuery):
-    chosen_release_date_option = call.data
-
+    chosen_release_date_option = call.data.split('_')[2]
     user_release_date_choice[call.from_user.id] = chosen_release_date_option
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
@@ -251,11 +248,11 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
 async def process_callback_filter_vote_count(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
     vote_count_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][0],
-                                                 callback_data=f'vote_count_before_500_{language_code}'),
+                                                 callback_data=f'vote_count_100-500_{language_code}'),
                             InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][1],
                                                  callback_data=f'vote_count_500-1000_{language_code}')], [
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][2],
-                                                    callback_data=f'vote_count_after_1000_{language_code}'),
+                                                    callback_data=f'vote_count_1000-10000_{language_code}'),
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][3],
                                                     callback_data=f'vote_count_any_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=vote_count_keyboard)
@@ -267,8 +264,7 @@ async def process_callback_filter_vote_count(call: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('vote_count_'))
 async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
-    chosen_vote_count_option = call.data
-
+    chosen_vote_count_option = call.data.split('_')[2]
     user_vote_count_choice[call.from_user.id] = chosen_vote_count_option
     language_code = get_user_language_from_db(call.from_user.id)
     message_text, keyboard_markup = generate_filter_submenu(language_code)
@@ -284,10 +280,11 @@ async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data.startswith('filter_rating_'))
 async def process_callback_filter_rating(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
-    rating_keyboard = [[InlineKeyboardButton(text=TEXTS[language_code]['starting_low'],
-                                             callback_data=f'sort_option_-1_{language_code}'),
-                        InlineKeyboardButton(text=TEXTS[language_code]['starting_high'],
-                                             callback_data=f'sort_option_1_{language_code}')]]
+    rating_keyboard = [
+        [InlineKeyboardButton(text=TEXTS[language_code]['starting_low'],
+                              callback_data=f'sort_option_popularity.asc_{language_code}')],
+        [InlineKeyboardButton(text=TEXTS[language_code]['starting_high'],
+                              callback_data=f'sort_option_popularity.desc_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=rating_keyboard)
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
@@ -312,8 +309,9 @@ async def process_callback_sort_option(call: types.CallbackQuery):
 @dp.callback_query(lambda query: query.data.startswith('filter_search_'))
 async def process_search(call: types.CallbackQuery):
     user_id = call.from_user.id
+    language_code = get_user_language_from_db(user_id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
-    # Fetch filters from the database
     filters = get_filters_from_db(user_id)
 
     print_info(f"Filters: {filters}")
@@ -325,27 +323,34 @@ async def process_search(call: types.CallbackQuery):
         genre_filter = filters.get('genre')
         release_date_filter = filters.get('release_date')
         user_rating_filter = filters.get('user_rating')
+        rating = filters.get('rating')
 
-        if not any([genre_filter, release_date_filter, user_rating_filter]):
+        if not any([genre_filter, release_date_filter, user_rating_filter, rating]):
             await bot.send_message(user_id,
                                    "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
         else:
             if release_date_filter is not None:
-                year = release_date_filter.split('_')[2]
-                release_date_filter = f'{year}-01-01'
+                start_year, end_year = release_date_filter.split('-')
+                start_date = f'{start_year}-01-01'
+                end_date = f'{end_year}-12-31'
+            else:
+                start_date = None
+                end_date = None
 
-            # Search for movies using the filters
-            movies = search_movies(genre_filter, release_date_filter, user_rating_filter)
+            if user_rating_filter is not None:
+                min_votes, max_votes = user_rating_filter.split('-')
+            else:
+                min_votes = None
+                max_votes = None
 
-            for movie in movies[:2]:
-                # Format and send the movie information
-               await format_movie(user_id=user_id, movie=movie)
+            movies = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code)
+            print_info(f"Movies: {movies}")
+            for movie in movies[:5]:
+                await format_movie(user_id=user_id, movie=movie)
 
-
-            # Reset the filters in the database
             reset_filters_in_db(user_id)
 
-    await call.answer(show_alert=False)
+            await call.answer(show_alert=False)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))

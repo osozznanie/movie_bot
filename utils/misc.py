@@ -54,12 +54,13 @@ async def send_next_movies(chat_id, language_code):
         current_page += 1
         current_movie = 0
 
-    next_button = types.InlineKeyboardButton(text="Next", callback_data='load_next')
-    reset_button = types.InlineKeyboardButton(text="Reset", callback_data='reset_page')
+    next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'), callback_data='load_next')
+    reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data='reset_page')
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
 
-    await bot.send_message(chat_id, "Click 'Next' to load next 5 movies or 'Reset' to start over",
-                           reply_markup=keyboard)
+    message_text = get_text(language_code, 'next_5_movies')
+
+    await bot.send_message(chat_id, message_text, reply_markup=keyboard)
 
 
 async def reset_movies(chat_id):
@@ -102,26 +103,22 @@ async def generate_genre_submenu(call, tmdb_language_code):
                                 reply_markup=keyboard_markup)
 
 
-def search_movies(genre_filter, release_date_after, user_rating):
+def search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, language_code):
     discover = tmdb.Discover()
-    if genre_filter and release_date_after and user_rating:
-        response = discover.movie(with_genres=genre_filter, primary_release_date_gte=release_date_after, vote_average_gte=user_rating)
-    elif genre_filter and release_date_after:
-        response = discover.movie(with_genres=genre_filter, primary_release_date_gte=release_date_after)
-    elif genre_filter and user_rating:
-        response = discover.movie(with_genres=genre_filter, vote_average_gte=user_rating)
-    elif release_date_after and user_rating:
-        response = discover.movie(primary_release_date_gte=release_date_after, vote_average_gte=user_rating)
-    elif genre_filter:
-        response = discover.movie(with_genres=genre_filter)
-    elif release_date_after:
-        response = discover.movie(primary_release_date_gte=release_date_after)
-    elif user_rating:
-        response = discover.movie(vote_average_gte=user_rating)
-    else:
-        response = discover.movie()
-    print(response)
-    return response['results']
+    print_info(f"Search parameters: genre_filter={genre_filter}, start_date={start_date}, end_date={end_date},"
+               f"min_votes = {min_votes}, max_votes = {max_votes}")
+
+    response = discover.movie(with_genres=genre_filter, primary_release_date_gte=start_date,
+                              primary_release_date_lte=end_date,
+                              vote_count_lte=max_votes, vote_count_gte=min_votes, sort_by=rating,
+                              language=language_code)
+
+    results = response['results']
+
+    print_info(f"Search results: {results}")
+    for movie in results:
+        print_info(f"Vote count for {movie['title']}: {movie.get('vote_count', 0)}")
+    return results
 
 
 async def format_movie(user_id, movie):
@@ -136,7 +133,10 @@ async def format_movie(user_id, movie):
 
     text = f"Title: {title}\nOverview: {overview}\nRelease Date: {release_date}\nGenres: {', '.join(genre_names)}"
 
-    await bot.send_photo(chat_id=user_id, photo=URLInputFile(base_url + poster_path), caption=text)
+    if poster_path is not None:
+        await bot.send_photo(chat_id=user_id, photo=URLInputFile(base_url + poster_path), caption=text)
+    else:
+        await bot.send_message(chat_id=user_id, text=text)
 
 
 def get_genre_names(genre_ids):

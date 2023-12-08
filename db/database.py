@@ -38,7 +38,7 @@ async def setup_database():
                        "genre_id INT, "
                        "year_range VARCHAR(255) DEFAULT 'any', "
                        "user_rating VARCHAR(255) DEFAULT 'any', "
-                       "rating INT DEFAULT 0);")
+                       "rating VARCHAR(32) DEFAULT 'any');")
         print("Table 'search_movie' created successfully")
 
 
@@ -66,7 +66,8 @@ def get_filters_from_db(user_id):
             return {
                 'genre': result[0],
                 'release_date': result[1],
-                'user_rating': result[2]
+                'user_rating': result[2],
+                'rating': result[3]
             }
         else:
             return None
