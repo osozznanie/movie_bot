@@ -172,15 +172,24 @@ async def process_callback_save(callback_query: types.CallbackQuery):
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
-async def process_callback_low(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'asc', 1000)
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
+async def handle_sort_option_low(callback_query: types.CallbackQuery):
+    await send_movies_by_rating_TMDB(callback_query, 'asc', 1000)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high_'))
-async def process_callback_high(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'desc', 1000)
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
+async def handle_sort_option_high(callback_query: types.CallbackQuery):
+    await send_movies_by_rating_TMDB(callback_query, 'desc', 1000)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('next_page_rating_'))
+async def handle_next_page_rating(callback_query: types.CallbackQuery):
+    sort_order = callback_query.data.split('_')[3]
+    await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000)
+    while len(message_ids) > 5:
+        message_id = message_ids.pop(0)
+        await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
+
+    await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
 
 
 # ========================================= Filter =========================================  #
