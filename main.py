@@ -369,7 +369,7 @@ async def process_search(call: types.CallbackQuery):
             for movie in movies[:5]:
                 await format_movie(user_id=user_id, movie=movie)
 
-            reset_filters_in_db(user_id)
+            # reset_filters_in_db(user_id)
 
             await call.answer(show_alert=False)
 
