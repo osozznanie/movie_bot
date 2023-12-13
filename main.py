@@ -173,13 +173,19 @@ async def process_callback_save(callback_query: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
 async def process_callback_low(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'asc', 1000)
+    language_code = get_user_language_from_db(callback_query.from_user.id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    await send_next_movies(callback_query.message.chat.id, tmdb_language_code, sort_by='popularity.asc',
+                           vote_range=(100, 1000))
     await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high_'))
 async def process_callback_high(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'desc', 1000)
+    language_code = get_user_language_from_db(callback_query.from_user.id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    await send_next_movies(callback_query.message.chat.id, tmdb_language_code, sort_by='popularity.desc',
+                           vote_range=(100, 1000))
     await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
@@ -360,9 +366,18 @@ async def process_search(call: types.CallbackQuery):
             for movie in movies[:5]:
                 await format_movie(user_id=user_id, movie=movie)
 
-            reset_filters_in_db(user_id)
-
             await call.answer(show_alert=False)
+
+
+@dp.callback_query(lambda query: query.data.startswith('filter_reset_'))
+async def process_reset(call: types.CallbackQuery):
+    user_id = call.from_user.id
+    reset_filters_in_db(user_id)
+    language_code = get_user_language_from_db(user_id)
+    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
+                                reply_markup=keyboard_markup)
+    await call.answer(show_alert=False)
 
 
 # ========================================= Saved movies =========================================  #

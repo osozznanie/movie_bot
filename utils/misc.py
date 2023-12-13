@@ -24,13 +24,16 @@ def create_keyboard(movie_id, language_code, text_key):
     return keyboard
 
 
-async def send_next_movies(chat_id, language_code):
+async def send_next_movies(chat_id, language_code, rating=None, genre_id=None, vote_range=(100, 1000),
+                           sort_by='popularity.desc'):
     global current_page
     global current_movie
 
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
     movies = tmdb.Movies()
-    response = movies.popular(language=tmdb_language_code, page=current_page)
+
+    response = movies.popular(language=tmdb_language_code, page=current_page, rating=rating, genre_id=genre_id,
+                              vote_range=vote_range, sort_by=sort_by)
 
     genres_api = Genres()
     genres_response = genres_api.movie_list(language=tmdb_language_code)
@@ -77,12 +80,23 @@ def generate_filter_submenu(language_code):
     submenu_texts = get_text(language_code, 'filter_submenu')
 
     text = get_text(language_code, 'select_option')
-    buttons = [[InlineKeyboardButton(text=submenu_texts[0], callback_data=f'filter_genre_{language_code}'),
-                InlineKeyboardButton(text=submenu_texts[1], callback_data=f'filter_releaseDate_{language_code}')],
-               [InlineKeyboardButton(text=submenu_texts[2], callback_data=f'filter_voteCount_{language_code}'),
-                InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{language_code}')],
-               [InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
-                InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')]]
+    buttons = [
+        [
+            InlineKeyboardButton(text=submenu_texts[0], callback_data=f'filter_genre_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[1], callback_data=f'filter_releaseDate_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=submenu_texts[2], callback_data=f'filter_voteCount_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
+            InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')
+        ],
+        [
+            InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data=f'filter_reset_{language_code}')
+        ]
+    ]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
     return text, keyboard_markup
 
@@ -146,36 +160,6 @@ def get_genre_names(genre_ids):
     genre_dict = {genre['id']: genre['name'] for genre in genre_list}
     genre_names = [genre_dict[genre_id] for genre_id in genre_ids if genre_id in genre_dict]
     return genre_names
-
-
-async def send_movies(callback_query: types.CallbackQuery, sort_order: str, vote_count: int):
-    language_code = get_user_language_from_db(callback_query.from_user.id)
-    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
-
-    discover = tmdb.Discover()
-    response = discover.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
-                              language=tmdb_language_code)
-
-    genres_api = Genres()
-    genres_response = genres_api.movie_list(language=tmdb_language_code)
-    genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
-
-    for movie in response['results'][:3]:
-        title = movie['title']
-        poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
-        img = URLInputFile(poster_url)
-
-        vote_average = movie['vote_average']
-        genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
-
-        message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
-
-        keyboard = create_keyboard(movie["id"], language_code, 'save')
-
-        await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text, parse_mode='HTML',
-                             reply_markup=keyboard)
-
-    await bot.answer_callback_query(callback_query.id)
 
 
 def get_rating_mod(language_code, text_key_low='starting_low', text_key_high='starting_high',
