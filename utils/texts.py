@@ -42,6 +42,7 @@ TEXTS = {
         'filter_rating_txt': 'Choose rating',
         'next_5_movies': 'Click "Next" to download the next 5 movies, or "Reset" to start over.',
         'reset': 'Reset',
+        'next': 'Next',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -86,6 +87,7 @@ TEXTS = {
         'filter_rating_txt': 'Виберіть рейтинг',
         'next_5_movies': 'Натисніть "Далі", щоб завантажити наступні 5 фільмів, або "Скинути", щоб почати заново.',
         'reset': 'Скинути',
+        'next': 'Далі',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -130,5 +132,6 @@ TEXTS = {
         'filter_rating_txt': 'Выберите рейтинг',
         'next_5_movies': 'Нажмите "Далее", чтобы загрузить следующие 5 фильмов, или "Сброс", чтобы начать сначала.',
         'reset': 'Сброс',
+        'next': 'Далее',
     },
 }

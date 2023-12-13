@@ -171,6 +171,18 @@ async def process_callback_save(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id, save_text)
 
 
+@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
+async def process_callback_low(callback_query: types.CallbackQuery):
+    await send_movies(callback_query, 'asc', 1000)
+    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high_'))
+async def process_callback_high(callback_query: types.CallbackQuery):
+    await send_movies(callback_query, 'desc', 1000)
+    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
+
+
 # ========================================= Filter =========================================  #
 @dp.callback_query(lambda query: query.data.startswith('filter_genre_'))
 async def process_callback_filter_genre(call: types.CallbackQuery):
@@ -219,9 +231,9 @@ async def process_callback_filter_release_date(call: types.CallbackQuery):
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][2],
                                                       callback_data=f'release_date_2001-2020_{language_code}'),
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][3],
-                                                      callback_data=f'release_date_2020-2025_{language_code}')], [
+                                                      callback_data=f'release_date_2020-2030_{language_code}')], [
                                  InlineKeyboardButton(text=TEXTS[language_code]['release_date_options'][4],
-                                                      callback_data=f'release_date_any_{language_code}')]]
+                                                      callback_data=f'release_date_1500-2030_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=release_date_keyboard)
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
@@ -254,7 +266,7 @@ async def process_callback_filter_vote_count(call: types.CallbackQuery):
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][2],
                                                     callback_data=f'vote_count_1000-10000_{language_code}'),
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][3],
-                                                    callback_data=f'vote_count_any_{language_code}')]]
+                                                    callback_data=f'vote_count_100-10000000_{language_code}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=vote_count_keyboard)
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
@@ -351,18 +363,6 @@ async def process_search(call: types.CallbackQuery):
             reset_filters_in_db(user_id)
 
             await call.answer(show_alert=False)
-
-
-@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low'))
-async def process_callback_low(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'asc', 1000)
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
-
-
-@dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high'))
-async def process_callback_high(callback_query: types.CallbackQuery):
-    await send_movies(callback_query, 'desc', 1000)
-    await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
 
 
 # ========================================= Saved movies =========================================  #
