@@ -6,15 +6,10 @@ from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile
 from tmdbsimple import Genres
 
-from db.database import get_user_language_from_db
+from db.database import get_user_language_from_db, get_current_popular_by_user_id, update_current_popular, \
+    update_current_rating
 from main import bot, user_languages
 from utils.texts import TEXTS
-
-current_page = 1
-current_movie = 0
-
-current_rating_page = 1
-current_rating_movie = 0
 
 
 def print_info(message):
@@ -28,55 +23,67 @@ def create_keyboard(movie_id, language_code, text_key):
     return keyboard
 
 
-async def send_next_movies(chat_id, language_code):
-    global current_page
-    global current_movie
+async def send_next_media(callback_query: types.CallbackQuery, language_code, content_type):
+    current_page, current_movie = get_current_popular_by_user_id(callback_query.from_user.id)
 
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
-    movies = tmdb.Movies()
-    response = movies.popular(language=tmdb_language_code, page=current_page)
 
-    genres_api = Genres()
+    if content_type == 'movie':
+        media_api = tmdb.Movies()
+        response = media_api.popular(language=tmdb_language_code, page=current_page)
+    elif content_type == 'tv':
+        media_api = tmdb.TV()
+        response = media_api.popular(language=tmdb_language_code, page=current_page)
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    genres_api = tmdb.Genres()
     genres_response = genres_api.movie_list(language=tmdb_language_code)
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
 
-    for movie in response['results'][current_movie:current_movie + 5]:
-        title = movie['title']
-        poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
+    for content in response['results'][current_movie:current_movie + 5]:
+        title = content['title'] if content_type == 'movie' else content['name']
+        poster_url = 'https://image.tmdb.org/t/p/w500' + content['poster_path']
         img = URLInputFile(poster_url)
-        vote_average = movie['vote_average']
-        genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
+        vote_average = content['vote_average']
+        genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
 
         message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
 
-        keyboard = create_keyboard(movie["id"], language_code, 'save')
+        keyboard = create_keyboard(content["id"], language_code, 'save')
 
-        await bot.send_photo(chat_id, photo=img, caption=message_text, parse_mode='HTML', reply_markup=keyboard)
+        await bot.send_chat_action(callback_query.message.chat.id, action='upload_photo')
+        await asyncio.sleep(0.5)
+
+        await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text, parse_mode='HTML',
+                             reply_markup=keyboard)
 
     current_movie += 5
     if current_movie >= len(response['results']):
         current_page += 1
         current_movie = 0
 
-    next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'), callback_data='load_next')
-    reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data='reset_page')
+    update_current_popular(callback_query.from_user.id, current_page, current_movie)
+
+    next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'),
+                                             callback_data=f'load_next_{content_type}_popular')
+    reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'),
+                                              callback_data=f'reset_page_{content_type}')
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
 
     message_text = get_text(language_code, 'next_5_movies')
 
-    await bot.send_message(chat_id, message_text, reply_markup=keyboard)
+    await bot.send_message(callback_query.message.chat.id, message_text, reply_markup=keyboard)
 
 
-async def reset_movies(chat_id):
-    global current_page
-    global current_movie
-    global current_rating_movie
-    global current_rating_page
-
+async def reset_movies(user_id, chat_id):
     current_page = 1
     current_movie = 0
     current_rating_movie = 0
     current_rating_page = 1
+
+    update_current_popular(user_id, current_page, current_movie)
+    update_current_rating(user_id, current_rating_page, current_rating_movie)
 
     await bot.send_message(chat_id, "The movie list has been reset. Click 'Next' to load the first 5 movies.")
 
@@ -171,32 +178,38 @@ global message_ids
 message_ids = []
 
 
-async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_order, vote_count):
-    global current_rating_page
-    global current_rating_movie
+async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_order, vote_count, content_type):
+    current_rating_page, current_rating_movie = get_current_popular_by_user_id(callback_query.from_user.id)
 
     chat_id = callback_query.message.chat.id
     language_code = get_user_language_from_db(callback_query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
-    discover = tmdb.Discover()
-    response = discover.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
-                              language=tmdb_language_code, page=current_rating_page)
+    if content_type == 'movie':
+        discover = tmdb.Discover()
+        response = discover.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
+                                  language=tmdb_language_code, page=current_rating_page)
+    elif content_type == 'tv':
+        discover = tmdb.Discover()
+        response = discover.tv(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
+                               language=tmdb_language_code, page=current_rating_page)
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
-    genres_api = Genres()
+    genres_api = tmdb.Genres()
     genres_response = genres_api.movie_list(language=tmdb_language_code)
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
 
-    for movie in response['results'][current_rating_movie:current_rating_movie + 5]:
-        title = movie['title']
-        poster_url = 'https://image.tmdb.org/t/p/w500' + movie['poster_path']
+    for content in response['results'][current_rating_movie:current_rating_movie + 5]:
+        title = content['title'] if content_type == 'movie' else content['name']
+        poster_url = 'https://image.tmdb.org/t/p/w500' + content['poster_path']
         img = URLInputFile(poster_url)
 
-        vote_average = movie['vote_average']
-        genre_names = [genres[genre_id] for genre_id in movie['genre_ids'] if genre_id in genres]
+        vote_average = content['vote_average']
+        genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
         message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
 
-        keyboard = create_keyboard(movie["id"], language_code, 'save')
+        keyboard = create_keyboard(content["id"], language_code, 'save')
         await bot.send_chat_action(callback_query.message.chat.id, action='upload_photo')
 
         await asyncio.sleep(0.5)
@@ -211,10 +224,12 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
         current_rating_page += 1
         current_rating_movie = 0
 
+    update_current_rating(callback_query.from_user.id, current_rating_page, current_rating_movie)
+
     if sort_order == 'desc':
-        callback_data_next_btn = 'next_page_rating_desc'
+        callback_data_next_btn = f'next_page_rating_desc_{content_type}'
     else:
-        callback_data_next_btn = 'next_page_rating_asc'
+        callback_data_next_btn = f'next_page_rating_asc_{content_type}'
 
     next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'), callback_data=callback_data_next_btn)
     reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data='reset_page')
@@ -225,7 +240,7 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
     await bot.answer_callback_query(callback_query.id)
 
 
-def get_rating_mod(language_code, text_key_low='starting_low', text_key_high='starting_high',
+def get_rating_mod(submenu_code_2, language_code, text_key_low='starting_low', text_key_high='starting_high',
                    text_key_option='select_option'):
     texts = TEXTS[language_code]
     default_texts = TEXTS['en']
@@ -234,8 +249,8 @@ def get_rating_mod(language_code, text_key_low='starting_low', text_key_high='st
     option_high = texts.get(text_key_high, default_texts[text_key_high])
     select_option = texts.get(text_key_option, default_texts[text_key_option])
 
-    keyboard = [[types.InlineKeyboardButton(text=option_low, callback_data=f'sort_option_low_{language_code}')],
-                [types.InlineKeyboardButton(text=option_high, callback_data=f'sort_option_high_{language_code}')], ]
+    keyboard = [[types.InlineKeyboardButton(text=option_low, callback_data=f'sort_option_low_{submenu_code_2}')],
+                [types.InlineKeyboardButton(text=option_high, callback_data=f'sort_option_high_{submenu_code_2}')], ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return select_option, keyboard_markup
@@ -290,14 +305,15 @@ def get_text(lang, key):
     return TEXTS.get(lang, TEXTS['en']).get(key, '')
 
 
-def submenu_keyboard(language_code):
+def submenu_keyboard(language_code, choose_option_menu):
     option_texts = get_text(language_code, 'submenu_keyboard')
 
-    keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{language_code}')],
-                [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{language_code}')],
-                [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{language_code}')],
-                [types.InlineKeyboardButton(text=option_texts[3], callback_data=f'back')]
-                ]
+    keyboard = [
+        [types.InlineKeyboardButton(text=option_texts[0], callback_data=f'submenu_option_1_{choose_option_menu}')],
+        [types.InlineKeyboardButton(text=option_texts[1], callback_data=f'submenu_option_2_{choose_option_menu}')],
+        [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'submenu_option_3_{choose_option_menu}')],
+        [types.InlineKeyboardButton(text=option_texts[3], callback_data=f'back')]
+    ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return keyboard_markup

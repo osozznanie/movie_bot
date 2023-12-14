@@ -20,8 +20,12 @@ async def setup_database():
                        "user_id SERIAL PRIMARY KEY, "
                        "username VARCHAR(32) NOT NULL, "
                        "language VARCHAR(5), "
-                       " reg_date DATE, "
-                       "update_date DATE);")
+                       "reg_date DATE, "
+                       "update_date DATE, "
+                       "current_popular_page INT DEFAULT 1, "
+                       "current_popular_movie INT DEFAULT 0, "
+                       "current_rating_page INT DEFAULT 1, "
+                       "current_rating_movie INT DEFAULT 0);")
         print("Table 'users' created successfully")
 
     with connection.cursor() as cursor:
@@ -60,7 +64,8 @@ def get_saved_movies_from_db(user_id):
 
 def get_filters_from_db(user_id):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT genre_id, year_range, user_rating, rating FROM search_movie WHERE user_id = %s;", (user_id,))
+        cursor.execute("SELECT genre_id, year_range, user_rating, rating FROM search_movie WHERE user_id = %s;",
+                       (user_id,))
         result = cursor.fetchone()
         if result is not None:
             return {
@@ -72,9 +77,12 @@ def get_filters_from_db(user_id):
         else:
             return None
 
+
 def reset_filters_in_db(user_id):
     with connection.cursor() as cursor:
-        cursor.execute("UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;", (user_id,))
+        cursor.execute(
+            "UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
+            (user_id,))
         connection.commit()
 
 
@@ -122,3 +130,33 @@ def delete_movie_from_db(user_id, movie_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
         cursor.execute("DELETE FROM saved_movies WHERE user_id = %s AND movie_id = %s;", (user_id, movie_id))
+
+
+def get_current_popular_by_user_id(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT current_popular_page, current_popular_movie "
+                       "FROM users WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result
+
+
+def get_current_rating_by_user_id(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT current_rating_page, current_rating_movie "
+                       "FROM users WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result
+
+
+def update_current_popular(user_id, current_popular_page, current_popular_movie):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE users SET current_popular_page = %s, current_popular_movie = %s WHERE user_id = %s",
+                       (current_popular_page, current_popular_movie, user_id))
+
+
+def update_current_rating(user_id, current_rating_page, current_rating_movie):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE users SET current_popular_page = %s, current_popular_movie = %s WHERE user_id = %s",
+                       (current_rating_page, current_rating_movie, user_id))

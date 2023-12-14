@@ -111,10 +111,8 @@ async def set_menu_callback(query: types.CallbackQuery):
 
     select_option_text = get_text(language_code, 'select_option')
 
-    print_info(f"User {query.from_user.id} chose menu option {menu_code} = set_menu_callback")
-
     if menu_code == '1' or menu_code == '2':
-        keyboard_markup = submenu_keyboard(language_code)
+        keyboard_markup = submenu_keyboard(language_code, menu_code)
         await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
     elif menu_code == '3':
@@ -131,16 +129,19 @@ async def show_another_random_movie(query: types.CallbackQuery):
     await send_random_movie(query, language_code, tmdb_language_code)
 
 
-@dp.callback_query(lambda query: query.data.startswith('submenu_option'))
+@dp.callback_query(lambda query: query.data.startswith('submenu_option_'))
 async def set_submenu_callback(call):
     submenu_code = call.data.split('_')[2]
+    submenu_code_2 = call.data.split('_')[3]
     language_code = get_user_language_from_db(call.from_user.id)
 
     if submenu_code == '1':
-        await send_next_movies(call.message.chat.id, language_code)
-
+        if submenu_code_2 == '1':
+            await send_next_media(call, language_code, 'movie')
+        elif submenu_code_2 == '2':
+            await send_next_media(call, language_code, 'tv')
     elif submenu_code == '2':
-        message_text, keyboard_markup = get_rating_mod(language_code)
+        message_text, keyboard_markup = get_rating_mod(submenu_code_2, language_code)
         await bot.edit_message_text(message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
     elif submenu_code == '3':
@@ -149,15 +150,20 @@ async def set_submenu_callback(call):
                                     reply_markup=keyboard_markup)
 
 
-@dp.callback_query(lambda query: query.data.startswith('load_next'))
+@dp.callback_query(lambda query: query.data.startswith('load_next_'))
 async def load_next_movies_callback(call):
+    content_type = call.data.split('_')[2]
+
     language_code = get_user_language_from_db(call.from_user.id)
-    await send_next_movies(call.message.chat.id, language_code)
+    if content_type == 'movie':
+        await send_next_media(call, language_code, 'movie')
+    elif content_type == 'tv':
+        await send_next_media(call, language_code, 'tv')
 
 
 @dp.callback_query(lambda query: query.data.startswith('reset_page'))
 async def reset_page_callback(call):
-    await reset_movies(call.message.chat.id)
+    await reset_movies(call.from_user.id, call.message.chat.id)
 
 
 @dp.callback_query(lambda c: c.data.startswith('save_'))
@@ -173,18 +179,31 @@ async def process_callback_save(callback_query: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
 async def handle_sort_option_low(callback_query: types.CallbackQuery):
-    await send_movies_by_rating_TMDB(callback_query, 'asc', 1000)
+    submenu_code = callback_query.data.split('_')[3]
+    if submenu_code == '1':
+        await send_movies_by_rating_TMDB(callback_query, 'asc', 1000, 'movie')
+    elif submenu_code == '2':
+        await send_movies_by_rating_TMDB(callback_query, 'asc', 500, 'tv')
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high_'))
 async def handle_sort_option_high(callback_query: types.CallbackQuery):
-    await send_movies_by_rating_TMDB(callback_query, 'desc', 1000)
-
+    submenu_code = callback_query.data.split('_')[3]
+    if submenu_code == '1':
+        await send_movies_by_rating_TMDB(callback_query, 'desc', 1000, 'movie')
+    elif submenu_code == '2':
+        await send_movies_by_rating_TMDB(callback_query, 'desc', 500, 'tv')
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('next_page_rating_'))
 async def handle_next_page_rating(callback_query: types.CallbackQuery):
     sort_order = callback_query.data.split('_')[3]
-    await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000)
+    content_type = callback_query.data.split('_')[4]
+
+    if content_type == 'movie':
+        await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000, content_type='movie')
+    elif content_type == 'tv':
+        await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000, content_type='tv')
+
     while len(message_ids) > 5:
         message_id = message_ids.pop(0)
         await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
