@@ -52,18 +52,24 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
             movie = tmdb.Movies(content['id'])
             details = movie.info()
             runtime = details['runtime']
+            additional_info = None
         elif content_type == 'tv':
             show = tmdb.TV(content['id'])
             details = show.info()
-            runtime = details['episode_run_time'][0] if details['episode_run_time'] \
-                else 'N/A'
+            runtime = details['episode_run_time'][0] if details['episode_run_time'] else 'N/A'
+            additional_info = details['number_of_seasons']
+
+        original_title = content['original_title'] if content_type == 'movie' else content['original_name']
+        release_date = content['release_date'] if content_type == 'movie' else content['first_air_date']
 
         message_text = get_message_text_for_card_from_TMDB(
-            language_code, title, content['original_title'], vote_average, genre_names,
-            content['release_date'].split('-')[0],  # Extracting the release year
+            language_code, title, original_title, vote_average, genre_names,
+            release_date.split('-')[0],  # Extracting the release year
             runtime,
             content['adult'],
-            content['overview']
+            content['overview'],
+            content_type,
+            additional_info  # Pass the number of seasons for TV shows
         )
 
         keyboard = create_keyboard(content["id"], language_code, 'save')
@@ -294,7 +300,8 @@ def menu_keyboard(language_code):
     return keyboard_markup
 
 
-def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names, release_year, runtime, adult, overview):
+def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names, release_year, runtime,
+                                        adult, overview, content_type, additional_info=None):
     type_text = get_text(lang, 'type')
     release_year_text = get_text(lang, 'release_year')
     runtime_text = get_text(lang, 'runtime')
@@ -306,19 +313,26 @@ def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_averag
     formatted_adult = get_text(lang, 'no') if not adult else get_text(lang, 'yes')
 
     message_parts = [
-        f'{title}\n\n',
-        f'{original_title}\n\n',
-        f'📺 {type_text}: {get_text(lang, "movie")}\n',
-        f'🎥 {release_year_text}: {release_year}\n',
+        f'<b>{title}</b>\n\n',
+        f'<i>{original_title}</i>\n\n',
+        f'📺 {type_text}: {get_text(lang, content_type)}\n',
+        f'🎥 {release_year_text}: {release_year}\n'
+    ]
+
+    if additional_info is not None:
+        seasons_text = get_text(lang, 'seasons')
+        message_parts.append(f'📅 {seasons_text}: {additional_info}\n')
+
+    message_parts.extend([
         f'⏰ {runtime_text}: {runtime} min.\n',
         f'ℹ️ {genres_text}: {formatted_genres}\n',
         f'🚸 {adult_text}: {formatted_adult}\n',
         f'✅ {rating_text}: {vote_average}/10\n\n'
-    ]
+    ])
 
     if overview:
         description_text = get_text(lang, 'description')
-        message_parts.append(f'{description_text}:\n{overview}')
+        message_parts.append(f'<b>{description_text}:</b>\n{overview}')  # Made the description bold
 
     return ''.join(message_parts)
 
@@ -399,21 +413,37 @@ async def get_next_movie():
         return random_movie
 
 
-async def send_random_movie(query, language_code, tmdb_language_code):
-    random_movie = await get_next_movie()
+async def send_random_content(query, language_code, tmdb_language_code, content_type):
+    if content_type == 'movie':
+        random_content = await get_next_movie()
+        content = tmdb.Movies(random_content['id'])
+    elif content_type == 'tv':
+        random_content = await get_next_tv_show()
+        content = tmdb.TV(random_content['id'])
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
-    movie = tmdb.Movies(random_movie['id'])
-    movie_info = movie.info(language=tmdb_language_code)
+    content_info = content.info(language=tmdb_language_code)
 
-    title = movie_info['title']
-    poster_url = 'https://image.tmdb.org/t/p/w500' + movie_info['poster_path']
-    vote_average = movie_info['vote_average']
-    genre_names = [genre['name'] for genre in movie_info['genres']]
+    title = content_info['title'] if content_type == 'movie' else content_info['name']
+    original_title = content_info['original_title'] if content_type == 'movie' else content_info['original_name']
+    poster_url = 'https://image.tmdb.org/t/p/w500' + content_info['poster_path']
+    vote_average = content_info['vote_average']
+    genre_names = [genre['name'] for genre in content_info['genres']]
+    release_year = content_info['release_date'].split('-')[0] if content_type == 'movie' else \
+    content_info['first_air_date'].split('-')[0]
+    runtime = content_info['runtime'] if content_type == 'movie' else content_info['episode_run_time'][0] if \
+    content_info['episode_run_time'] else 'N/A'
+    adult = content_info['adult'] if content_type == 'movie' else False
+    overview = content_info['overview']
+    additional_info = None if content_type == 'movie' else content_info['number_of_seasons']
 
-    message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
+    message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
+                                                       release_year, runtime, adult, overview, content_type,
+                                                       additional_info)
 
-    keyboard = create_keyboard(random_movie["id"], language_code, 'save')
-    another_button = create_keyboard(random_movie["id"], language_code, 'another')
+    keyboard = create_keyboard(random_content["id"], language_code, 'save')
+    another_button = create_keyboard(random_content["id"], language_code, 'another')
 
     keyboard.inline_keyboard.append(another_button.inline_keyboard[0])
 
@@ -425,3 +455,8 @@ async def send_random_movie(query, language_code, tmdb_language_code):
                          parse_mode='HTML')
 
     await query.answer(show_alert=False)
+
+
+
+
+

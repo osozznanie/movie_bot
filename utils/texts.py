@@ -50,6 +50,9 @@ TEXTS = {
         'rating_card': 'Average user rating',
         'no': 'No',
         'yes': 'Yes',
+        'movie': 'Movie',
+        'tv': 'TV series',
+        'seasons': 'Number of seasons',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -102,7 +105,9 @@ TEXTS = {
         'rating_card': 'Cередній рейтинг глядачів',
         'no': 'Ні',
         'yes': 'Так',
-
+        'movie': 'Фільм',
+        'tv': 'Серіал',
+        'seasons': 'Кількість сезонів',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -155,5 +160,8 @@ TEXTS = {
         'rating_card': 'Cредний рейтинг зрителей',
         'no': 'Нет',
         'yes': 'Да',
+        'movie': 'Фильм',
+        'tv': 'Сериал',
+        'seasons': 'Количество сезонов',
     },
 }

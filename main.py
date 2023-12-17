@@ -116,7 +116,7 @@ async def set_menu_callback(query: types.CallbackQuery):
         await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
     elif menu_code == '3':
-        await send_random_movie(query, language_code, tmdb_language_code)
+        await send_random_content(query, language_code, tmdb_language_code, 'movie')
     elif menu_code == '4':
         await send_option_message(query, language_code, select_option_text)
 
@@ -126,7 +126,7 @@ async def show_another_random_movie(query: types.CallbackQuery):
     language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
-    await send_random_movie(query, language_code, tmdb_language_code)
+    await send_random_content(query, language_code, tmdb_language_code, 'movie')
 
 
 @dp.callback_query(lambda query: query.data.startswith('submenu_option_'))
@@ -193,6 +193,7 @@ async def handle_sort_option_high(callback_query: types.CallbackQuery):
         await send_movies_by_rating_TMDB(callback_query, 'desc', 1000, 'movie')
     elif submenu_code == '2':
         await send_movies_by_rating_TMDB(callback_query, 'desc', 500, 'tv')
+
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('next_page_rating_'))
 async def handle_next_page_rating(callback_query: types.CallbackQuery):
