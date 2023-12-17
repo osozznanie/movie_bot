@@ -43,6 +43,13 @@ TEXTS = {
         'next_5_movies': 'Click "Next" to download the next 5 movies, or "Reset" to start over.',
         'reset': 'Reset',
         'next': 'Next',
+        'type': 'Type',
+        'release_year': 'Release date',
+        'adult': 'Adult?',
+        'description': 'Description',
+        'rating_card': 'Average user rating',
+        'no': 'No',
+        'yes': 'Yes',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -88,6 +95,14 @@ TEXTS = {
         'next_5_movies': 'Натисніть "Далі", щоб завантажити наступні 5 фільмів, або "Скинути", щоб почати заново.',
         'reset': 'Скинути',
         'next': 'Далі',
+        'type': 'Тип',
+        'release_year': 'Дата виходу',
+        'adult': 'Для дорослих?',
+        'description': 'Опис',
+        'rating_card': 'Cередній рейтинг глядачів',
+        'no': 'Ні',
+        'yes': 'Так',
+
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -133,6 +148,12 @@ TEXTS = {
         'next_5_movies': 'Нажмите "Далее", чтобы загрузить следующие 5 фильмов, или "Сброс", чтобы начать сначала.',
         'reset': 'Сбросить',
         'next': 'Далее',
-
+        'type': 'Тип',
+        'release_year': 'Дата выхода',
+        'adult': 'Для взрослых?',
+        'description': 'Описание',
+        'rating_card': 'Cредний рейтинг зрителей',
+        'no': 'Нет',
+        'yes': 'Да',
     },
 }

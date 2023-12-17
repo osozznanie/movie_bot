@@ -48,7 +48,23 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
         vote_average = content['vote_average']
         genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
 
-        message_text = get_message_text_for_card_from_TMDB(language_code, title, vote_average, genre_names)
+        if content_type == 'movie':
+            movie = tmdb.Movies(content['id'])
+            details = movie.info()
+            runtime = details['runtime']
+        elif content_type == 'tv':
+            show = tmdb.TV(content['id'])
+            details = show.info()
+            runtime = details['episode_run_time'][0] if details['episode_run_time'] \
+                else 'N/A'
+
+        message_text = get_message_text_for_card_from_TMDB(
+            language_code, title, content['original_title'], vote_average, genre_names,
+            content['release_date'].split('-')[0],  # Extracting the release year
+            runtime,
+            content['adult'],
+            content['overview']
+        )
 
         keyboard = create_keyboard(content["id"], language_code, 'save')
 
@@ -278,12 +294,33 @@ def menu_keyboard(language_code):
     return keyboard_markup
 
 
-def get_message_text_for_card_from_TMDB(lang, title, vote_average, genre_names):
-    title_text = get_text(lang, 'title')
-    rating_text = get_text(lang, 'rating')
+def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names, release_year, runtime, adult, overview):
+    type_text = get_text(lang, 'type')
+    release_year_text = get_text(lang, 'release_year')
+    runtime_text = get_text(lang, 'runtime')
     genres_text = get_text(lang, 'genres')
+    adult_text = get_text(lang, 'adult')
+    rating_text = get_text(lang, 'rating_card')
 
-    return f'{title_text}: {title}\n{rating_text}: {vote_average}\n{genres_text}: {", ".join(genre_names)}'
+    formatted_genres = ' | '.join(genre_names)
+    formatted_adult = get_text(lang, 'no') if not adult else get_text(lang, 'yes')
+
+    message_parts = [
+        f'{title}\n\n',
+        f'{original_title}\n\n',
+        f'📺 {type_text}: {get_text(lang, "movie")}\n',
+        f'🎥 {release_year_text}: {release_year}\n',
+        f'⏰ {runtime_text}: {runtime} min.\n',
+        f'ℹ️ {genres_text}: {formatted_genres}\n',
+        f'🚸 {adult_text}: {formatted_adult}\n',
+        f'✅ {rating_text}: {vote_average}/10\n\n'
+    ]
+
+    if overview:
+        description_text = get_text(lang, 'description')
+        message_parts.append(f'{description_text}:\n{overview}')
+
+    return ''.join(message_parts)
 
 
 def get_movie_details_from_tmdb(movie_id, language_code):
