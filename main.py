@@ -87,6 +87,8 @@ async def set_language_callback(query: types.CallbackQuery):
     language = language_code
 
     update_user_language_from_db(user_id, username, language)
+    update_user_pages_from_db(user_id)
+
     print_info(f"User {user_id} chose language {language_code} = set_language_callback")
     select_menu = TEXTS[language_code]['select_menu']
 
@@ -116,7 +118,7 @@ async def set_menu_callback(query: types.CallbackQuery):
         await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
     elif menu_code == '3':
-        await send_random_content(query, language_code, tmdb_language_code, 'movie')
+        await send_random_content(query, language_code, tmdb_language_code)
     elif menu_code == '4':
         await send_option_message(query, language_code, select_option_text)
 
@@ -126,7 +128,7 @@ async def show_another_random_movie(query: types.CallbackQuery):
     language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
-    await send_random_content(query, language_code, tmdb_language_code, 'movie')
+    await send_random_content(query, language_code, tmdb_language_code)
 
 
 @dp.callback_query(lambda query: query.data.startswith('submenu_option_'))
