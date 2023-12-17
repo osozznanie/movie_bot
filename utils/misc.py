@@ -42,7 +42,25 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
 
     for content in response['results'][current_movie:current_movie + 5]:
+        print_info(f"Content: {content_type} {content}")
         await send_content_details(content, content_type, genres, language_code, callback_query)
+
+    current_movie += 5
+    if current_movie >= len(response['results']):
+        current_page += 1
+        current_movie = 0
+
+    update_current_popular(callback_query.from_user.id, current_page, current_movie)
+
+    next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'),
+                                             callback_data=f'load_next_{content_type}_popular')
+    reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'),
+                                              callback_data=f'reset_page_{content_type}')
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
+
+    message_text = get_text(language_code, 'next_5_movies')
+
+    await bot.send_message(callback_query.message.chat.id, message_text, reply_markup=keyboard)
 
 
 async def send_content_details(content, content_type, genres, language_code, callback_query):
@@ -57,24 +75,20 @@ async def send_content_details(content, content_type, genres, language_code, cal
         details = movie.info()
         runtime = details['runtime']
         additional_info = None
+        adult = details['adult'] if 'adult' in details else 'N/A'
     elif content_type == 'tv':
         show = tmdb.TV(content['id'])
         details = show.info()
         runtime = details['episode_run_time'][0] if details['episode_run_time'] else 'N/A'
         additional_info = details['number_of_seasons']
+        adult = details['adult'] if 'adult' in details else 'N/A'
 
     original_title = content['original_title'] if content_type == 'movie' else content['original_name']
     release_date = content['release_date'] if content_type == 'movie' else content['first_air_date']
 
-    message_text = get_message_text_for_card_from_TMDB(
-        language_code, title, original_title, vote_average, genre_names,
-        release_date.split('-')[0],
-        runtime,
-        content['adult'],
-        content['overview'],
-        content_type,
-        additional_info
-    )
+    message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
+                                                       release_date.split('-')[0], runtime, content['overview'],
+                                                       content_type, adult, additional_info)
 
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
@@ -98,6 +112,7 @@ async def reset_movies(user_id, chat_id):
 
     update_current_popular(user_id, current_page, current_movie)
     update_current_rating(user_id, current_rating_page, current_rating_movie)
+    await update_current_page_random(user_id, 'current_random_movie_page')
 
     await bot.send_message(chat_id, "The movie list has been reset. Click 'Next' to load the first 5 movies.")
 
@@ -215,37 +230,8 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
 
     for content in response['results'][current_rating_movie:current_rating_movie + 5]:
-        title = content['title'] if content_type == 'movie' else content['name']
-        original_title = content['original_title'] if 'original_title' in content else 'N/A'
-        poster_url = 'https://image.tmdb.org/t/p/w500' + content['poster_path']
-        img = URLInputFile(poster_url)
-
-        vote_average = content['vote_average']
-        genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
-        release_date = content['release_date'][:4] if 'release_date' in content and content['release_date'] else 'N/A'
-        runtime = content['runtime'] if 'runtime' in content else 'N/A'
-        adult = content['adult'] if 'adult' in content else 'N/A'
-        overview = content['overview'] if 'overview' in content else 'N/A'
-        additional_info = content['additional_info'] if 'additional_info' in content else 'N/A'
-
-        message_text = get_message_text_for_card_from_TMDB(
-            language_code, title, original_title, vote_average, genre_names,
-            release_date.split('-')[0],  # Extracting the release year
-            runtime,
-            adult,
-            overview,
-            content_type,
-            additional_info
-        )
-        keyboard = create_keyboard(content["id"], language_code, 'save')
-        await bot.send_chat_action(callback_query.message.chat.id, action='upload_photo')
-
-        await asyncio.sleep(0.5)
-
-        message = await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text,
-                                       parse_mode='HTML',
-                                       reply_markup=keyboard)
-        message_ids.append(message.message_id)
+        print_info(f"Content: {content_type} {content}")
+        await send_content_details(content, content_type, genres, language_code, callback_query)
 
     current_rating_movie += 5
     if current_rating_movie >= len(response['results']):
@@ -307,7 +293,7 @@ def menu_keyboard(language_code):
 
 
 def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names, release_year, runtime,
-                                        adult, overview, content_type, additional_info=None):
+                                        overview, content_type, adult=None, additional_info=None):
     type_text = get_text(lang, 'type')
     release_year_text = get_text(lang, 'release_year')
     runtime_text = get_text(lang, 'runtime')
@@ -316,8 +302,7 @@ def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_averag
     rating_text = get_text(lang, 'rating_card')
 
     formatted_genres = ' | '.join(genre_names)
-    formatted_adult = get_text(lang, 'no') if not adult else get_text(lang, 'yes')
-
+    formatted_adult = get_text(lang, 'yes') if adult is not None and adult else get_text(lang, 'no')
     message_parts = [
         f'<b>{title}</b>\n\n',
         f'<i>{original_title}</i>\n\n',
@@ -420,7 +405,7 @@ async def send_random_content(query, language_code, tmdb_language_code):
     additional_info = None if content_type == 'movie' else content_info['number_of_seasons']
 
     message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
-                                                       release_year, runtime, adult, overview, content_type,
+                                                       release_year, runtime, overview, content_type, adult,
                                                        additional_info)
 
     if len(message_text) > 1024:
