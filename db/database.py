@@ -62,12 +62,30 @@ def create_search_movie_table():
         print("Table 'search_movie' created successfully")
 
 
+def create_saved_series_table():
+    with connection.cursor() as cursor:
+        cursor.execute("CREATE TABLE IF NOT EXISTS saved_series ("
+                       "user_id INT, "
+                       "series_id INT, "
+                       "PRIMARY KEY (user_id, series_id));")
+        print("Table 'saved_series' created successfully")
+
+
+def save_series_to_db(user_id, series_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute("INSERT INTO saved_series (user_id, series_id) "
+                       "VALUES (%s, %s) "
+                       "ON CONFLICT (user_id, series_id) DO NOTHING;", (user_id, series_id))
+
+
 async def setup_database():
     connect_to_database()
     create_users_table()
     create_user_pages_table()
     create_saved_movies_table()
     create_search_movie_table()
+    create_saved_series_table()
 
 
 def get_user_language_from_db(user_id):
@@ -82,7 +100,13 @@ def get_user_language_from_db(user_id):
 
 def get_saved_movies_from_db(user_id):
     with connection.cursor() as cursor:
-        cursor.execute("SELECT * FROM saved_movies WHERE user_id = %s;", (user_id,))
+        cursor.execute("SELECT movie_id FROM saved_movies WHERE user_id = %s;", (user_id,))
+        return cursor.fetchall()
+
+
+def get_saved_series_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT series_id FROM saved_series WHERE user_id = %s;", (user_id,))
         return cursor.fetchall()
 
 

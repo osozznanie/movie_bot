@@ -16,7 +16,6 @@ from utils.texts import TEXTS
 tmdb.API_KEY = api.TMDB_API_KEY
 bot = Bot(config.BOT_TOKEN)
 dp = Dispatcher(bot=bot)
-TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500'
 connection = None
 
 shown_movies = set()
@@ -89,7 +88,6 @@ async def set_language_callback(query: types.CallbackQuery):
     update_user_language_from_db(user_id, username, language)
     update_user_pages_from_db(user_id)
 
-    print_info(f"User {user_id} chose language {language_code} = set_language_callback")
     select_menu = TEXTS[language_code]['select_menu']
 
     set_user_language(query.from_user.id, language_code)
@@ -171,9 +169,13 @@ async def reset_page_callback(call):
 @dp.callback_query(lambda c: c.data.startswith('save_'))
 async def process_callback_save(callback_query: types.CallbackQuery):
     movie_id = callback_query.data.split('_')[1]
+    content_type = callback_query.data.split('_')[2]
     user_id = callback_query.from_user.id
 
-    save_movie_to_db(user_id, movie_id)
+    if content_type == 'movie':
+        save_movie_to_db(user_id, movie_id)
+    elif content_type == 'tv':
+        save_series_to_db(user_id, movie_id)
 
     save_text = get_text(get_user_language_from_db(user_id), 'save')
     await bot.answer_callback_query(callback_query.id, save_text)
@@ -397,27 +399,26 @@ async def process_search(call: types.CallbackQuery):
 
 
 # ========================================= Saved movies =========================================  #
-@dp.callback_query(lambda c: c.data == 'saved_movies')
-async def show_saved_movies(call):
+@dp.callback_query(lambda c: c.data in ['saved_movie', 'saved_tv'])
+async def show_saved_media(call):
     user_id = call.from_user.id
-    saved_movies = get_saved_movies_from_db(user_id)
     user_language = get_user_language_from_db(user_id)
+    content_type = call.data.split('_')[1]
 
-    for movie in saved_movies:
-        movie_id = movie[1]
-        title, poster_path, vote_average, genres = get_movie_details_from_tmdb(movie_id, user_language)
+    if content_type == 'movie':
+        saved_media = [movie_id[0] for movie_id in get_saved_movies_from_db(user_id)]
+    elif content_type == 'tv':
+        saved_media = [series_id[0] for series_id in get_saved_series_from_db(user_id)]
 
-        poster_url = 'https://image.tmdb.org/t/p/w500' + poster_path
-        img = URLInputFile(poster_url)
-        genre_names = [genre['name'] for genre in genres]
+    for media_id in saved_media:
+        message_text, poster_path = get_media_details_and_format_message(media_id, content_type, user_language)
+        photo_url = "https://image.tmdb.org/t/p/w500" + poster_path  # Construct the full URL for the poster image
 
-        message_text = get_message_text_for_card_from_TMDB(user_language, title, vote_average, genre_names)
+        # Create inline keyboard with a delete button
+        delete_button = [types.InlineKeyboardButton(text="Delete", callback_data=f"delete_{content_type}_{media_id}")]
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard= delete_button)
 
-        keyboard = create_keyboard(movie_id, user_language, 'delete')
-
-        await bot.send_photo(call.message.chat.id, photo=img, caption=message_text, parse_mode='HTML',
-                             reply_markup=keyboard)
-    await call.answer(show_alert=False)
+        await bot.send_photo(call.message.chat.id, photo_url, caption=message_text, reply_markup=keyboard, parse_mode='HTML')
 
 
 # ========================================= Delete =========================================  #
@@ -465,7 +466,7 @@ async def cmd_menu(message: types.Message):
 
 @dp.message(lambda message: message.text.lower() == 'saved')
 async def process_saved(message: types.CallbackQuery):
-    await cmd_menu_for_save(message)
+    await cmd_menu_for_save(message.message)
 
 
 @dp.message(Command("saved"))
@@ -479,10 +480,10 @@ async def cmd_menu_for_save(message: types.Message):
 
 
 # ========================================= Another =========================================  #
-@dp.callback_query(lambda c: c.data)
-async def process_callback(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, f"You chose option {callback_query.data}")
+# @dp.callback_query(lambda c: c.data)
+# async def process_callback(callback_query: types.CallbackQuery):
+#     await bot.answer_callback_query(callback_query.id)
+#     await bot.send_message(callback_query.from_user.id, f"You chose option {callback_query.data}")
 
 
 # ========================================= Testing and Exception Handling ========================================= #
