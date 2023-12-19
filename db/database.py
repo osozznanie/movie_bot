@@ -5,7 +5,7 @@ import config
 connection = None
 
 
-async def setup_database():
+def connect_to_database():
     global connection
     connection = psycopg2.connect(host=config.host, database=os.getenv("db_name"), password=os.getenv("db_pass"),
                                   user=os.getenv("db_user"), port=os.getenv("db_port"))
@@ -15,6 +15,8 @@ async def setup_database():
         cursor.execute("SELECT version();")
         print("Server version:", cursor.fetchone())
 
+
+def create_users_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS users ("
                        "user_id SERIAL PRIMARY KEY, "
@@ -24,6 +26,8 @@ async def setup_database():
                        "update_date DATE);")
         print("Table 'users' created successfully")
 
+
+def create_user_pages_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS user_pages ("
                        "user_id INT PRIMARY KEY, "
@@ -36,6 +40,8 @@ async def setup_database():
                        "FOREIGN KEY (user_id) REFERENCES users(user_id));")
         print("Table 'user_pages' created successfully")
 
+
+def create_saved_movies_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS saved_movies ("
                        "user_id INT, "
@@ -43,6 +49,8 @@ async def setup_database():
                        "PRIMARY KEY (user_id, movie_id));")
         print("Table 'saved_movies' created successfully")
 
+
+def create_search_movie_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS search_movie ("
                        "id SERIAL PRIMARY KEY, "
@@ -52,6 +60,14 @@ async def setup_database():
                        "user_rating VARCHAR(255) DEFAULT 'any', "
                        "rating VARCHAR(32) DEFAULT 'any');")
         print("Table 'search_movie' created successfully")
+
+
+async def setup_database():
+    connect_to_database()
+    create_users_table()
+    create_user_pages_table()
+    create_saved_movies_table()
+    create_search_movie_table()
 
 
 def get_user_language_from_db(user_id):
