@@ -173,6 +173,18 @@ async def reset_page_callback(call):
     await reset_movies(call.from_user.id, call.message.chat.id)
 
 
+@dp.callback_query(lambda query: query.data.startswith('next_page_filter'))
+async def next_page_filter_callback(call):
+    user_id = call.from_user.id
+    language_code = get_user_language_from_db(user_id)
+    content_type = call.data.split('_')[3]
+
+    if content_type == 'movie':
+        await send_next_page_filter(call, language_code, 'movie')
+    elif content_type == 'tv':
+        await send_next_page_filter(call, language_code, 'tv')
+
+
 @dp.callback_query(lambda c: c.data.startswith('save_'))
 async def process_callback_save(callback_query: types.CallbackQuery):
     movie_id = callback_query.data.split('_')[1]
@@ -257,7 +269,7 @@ async def process_callback_genre(call: types.CallbackQuery):
         save_fields_to_table_search_series_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
                                               rating=None)
 
-    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
     await bot.send_message(call.from_user.id, f"You chose genre {chosen_genre_id}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
@@ -291,7 +303,7 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
     elif content_type == 'tv':
         save_fields_to_table_search_series_db(call.from_user.id, None, chosen_release_date_option, None, None)
 
-    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
     await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
@@ -303,7 +315,7 @@ async def process_callback_filter_vote_count(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
     content_type = call.data.split('_')[2]
 
-    keyboard_markup_vote_count = generate_vote_count_submenu(language_code,content_type)
+    keyboard_markup_vote_count = generate_vote_count_submenu(language_code, content_type)
 
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
@@ -316,14 +328,15 @@ async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
     chosen_vote_count_option = call.data.split('_')[2]
     content_type = call.data.split('_')[3]
     language_code = get_user_language_from_db(call.from_user.id)
-    print_info(f"User {call.from_user.id} chose vote count option {chosen_vote_count_option} = process_callback_filter_vote_count_choice")
+    print_info(
+        f"User {call.from_user.id} chose vote count option {chosen_vote_count_option} = process_callback_filter_vote_count_choice")
 
     if content_type == 'movie':
         save_fields_to_table_search_movie_db(call.from_user.id, None, None, chosen_vote_count_option, None)
     elif content_type == 'tv':
         save_fields_to_table_search_series_db(call.from_user.id, None, None, chosen_vote_count_option, None)
 
-    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
     await bot.send_message(call.from_user.id, f"You chose option {chosen_vote_count_option}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
@@ -335,7 +348,7 @@ async def process_callback_filter_rating(call: types.CallbackQuery):
     language_code = get_user_language_from_db(call.from_user.id)
     content_type = call.data.split('_')[2]
 
-    keyboard_markup_rating = generate_rating_submenu(language_code,content_type)
+    keyboard_markup_rating = generate_rating_submenu(language_code, content_type)
     await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
 
     await bot.send_message(call.from_user.id, get_text(language_code, 'filter_rating_txt'),
@@ -354,7 +367,7 @@ async def process_callback_sort_option(call: types.CallbackQuery):
     elif content_type == 'tv':
         save_fields_to_table_search_series_db(call.from_user.id, None, None, None, chosen_sort_option)
 
-    message_text, keyboard_markup = generate_filter_submenu(language_code)
+    message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
     await call.answer(show_alert=False)
@@ -364,8 +377,10 @@ async def process_callback_sort_option(call: types.CallbackQuery):
 async def process_search(call: types.CallbackQuery):
     user_id = call.from_user.id
     language_code = get_user_language_from_db(user_id)
-    content_type = call.data.split('_')[3]
+    content_type = call.data.split('_')[2]
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+
+    print_info(content_type)
 
     filters = get_filters_movie_from_db(user_id) if content_type == 'movie' else get_filters_series_from_db(user_id)
 
@@ -397,15 +412,27 @@ async def process_search(call: types.CallbackQuery):
                 min_votes = None
                 max_votes = None
 
+            current_movie, current_page, *_ = get_filter_pages_and_movies_by_user_id(user_id)
+
             movies = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code)
-            print_info(f"Movies: {movies}")
-            for movie in movies[:5]:
-                await format_movie(user_id=user_id, movie=movie)
 
-            # reset_filters_movies_in_db(user_id)
-            # reset_filters_series_in_db(user_id)
+            for _ in range(5):
+                if current_movie >= len(movies):
+                    current_movie = 0
+                    current_page += 1
+                    movies = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating,
+                                           tmdb_language_code)
+                movie = movies[current_movie]
+                genres = get_genres(tmdb_language_code)
+                await send_content_details(movie, content_type, genres, language_code, call)
+                current_movie += 1
 
-            await call.answer(show_alert=False)
+            save_filter_pages_and_movies_by_user_id(user_id, current_movie, current_page)
+
+            await create_keyboard_with_next_button(user_id, language_code, content_type,
+                                                   f'next_page_filter_{content_type}')
+
+        await call.answer(show_alert=False)
 
 
 # ========================================= Saved movies =========================================  #

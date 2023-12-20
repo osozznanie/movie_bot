@@ -37,6 +37,10 @@ def create_user_pages_table():
                        "current_rating_movie INT DEFAULT 0,"
                        "current_random_movie_page INT DEFAULT 1,"
                        "current_random_tv_page INT DEFAULT 1,"
+                       'current_filter_movie_page INT DEFAULT 1,'
+                       'current_filter_tv_page INT DEFAULT 1,'
+                       'current_filter_movie_movie INT DEFAULT 0,'
+                       'current_filter_tv_movie INT DEFAULT 0,'
                        "FOREIGN KEY (user_id) REFERENCES users(user_id));")
         print("Table 'user_pages' created successfully")
 
@@ -171,7 +175,6 @@ def reset_filters_series_in_db(user_id):
         connection.commit()
 
 
-
 def update_user_language_from_db(user_id, username, language):
     with connection.cursor() as cursor:
         cursor.execute("INSERT INTO users (user_id, username, language, reg_date, update_date) "
@@ -236,13 +239,6 @@ def save_fields_to_table_search_series_db(user_id, genre_id=None, year_range=Non
                        [user_id, genre_id, year_range, user_rating, rating] + update_values)
 
 
-def save_fields_to_db_by_type(user_id, type_of_filter, content_type):
-    if content_type == "movie":
-        save_fields_to_table_search_movie_db(user_id, type_of_filter)
-    elif content_type == "series":
-        save_fields_to_table_search_series_db(user_id, type_of_filter)
-
-
 def delete_movie_from_db(user_id, movie_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
@@ -261,6 +257,34 @@ def get_current_popular_by_user_id(user_id):
                        "FROM user_pages WHERE user_id = %s", (user_id,))
         result = cursor.fetchone()
         return result
+
+
+def get_filter_pages_and_movies_by_user_id(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT current_filter_movie_page, current_filter_tv_page, current_filter_movie_movie, current_filter_tv_movie "
+            "FROM user_pages WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result
+
+
+def set_filter_pages_and_movies_by_user_id(user_id, movie_page, tv_page, movie_movie, tv_movie):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE user_pages SET current_filter_movie_page = %s, current_filter_tv_page = %s, current_filter_movie_movie = %s, current_filter_tv_movie = %s "
+            "WHERE user_id = %s", (movie_page, tv_page, movie_movie, tv_movie, user_id))
+        connection.commit()
+
+
+def save_filter_pages_and_movies_by_user_id(user_id, current_movie, current_page):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO user_pages (user_id, current_filter_movie_page, current_filter_movie_movie) "
+            "VALUES (%s, %s, %s) "
+            "ON CONFLICT (user_id) DO UPDATE SET current_filter_movie_page = EXCLUDED.current_filter_movie_page, "
+            "current_filter_movie_movie = EXCLUDED.current_filter_movie_movie",
+            (user_id, current_page, current_movie))
+        connection.commit()
 
 
 def get_current_rating_by_user_id(user_id):

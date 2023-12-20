@@ -4,11 +4,13 @@ import random
 import requests
 import tmdbsimple as tmdb
 from aiogram import types
+from aiogram.client.session import aiohttp
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile, KeyboardButton
 from tmdbsimple import Genres
 
 from db.database import get_user_language_from_db, get_current_popular_by_user_id, update_current_popular, \
-    update_current_rating, update_current_page_random, get_current_page_random
+    update_current_rating, update_current_page_random, get_current_page_random, get_filters_movie_from_db, \
+    get_filters_series_from_db, get_filter_pages_and_movies_by_user_id, save_filter_pages_and_movies_by_user_id
 from main import bot, user_languages
 from utils.texts import TEXTS
 
@@ -59,15 +61,21 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
 
     update_current_popular(callback_query.from_user.id, current_page, current_movie)
 
+    await create_keyboard_with_next_button(callback_query.from_user.id, language_code, content_type)
+
+
+async def create_keyboard_with_next_button(user_id, language_code, content_type,
+                                           call_for_next=None):
+    if call_for_next is None:
+        call_for_next = f'load_next_{content_type}_popular'
     next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'),
-                                             callback_data=f'load_next_{content_type}_popular')
+                                             callback_data=call_for_next)
     reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'),
                                               callback_data=f'reset_page_{content_type}')
+
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
-
     message_text = get_text(language_code, 'next_5_movies')
-
-    await bot.send_message(callback_query.message.chat.id, message_text, reply_markup=keyboard)
+    await bot.send_message(user_id, text=message_text, reply_markup=keyboard)
 
 
 async def send_content_details(content, content_type, genres, language_code, callback_query):
@@ -76,7 +84,6 @@ async def send_content_details(content, content_type, genres, language_code, cal
     img = URLInputFile(poster_url)
     vote_average = content['vote_average']
     genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
-
     if content_type == 'movie':
         movie = tmdb.Movies(content['id'])
         details = movie.info()
@@ -96,7 +103,6 @@ async def send_content_details(content, content_type, genres, language_code, cal
     message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
                                                        release_date.split('-')[0], runtime, content['overview'],
                                                        content_type, adult, additional_info)
-
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
 
@@ -138,8 +144,8 @@ def generate_filter_submenu(language_code, content_type="any"):
             InlineKeyboardButton(text=submenu_texts[3], callback_data=f'filter_rating_{content_type}')
         ],
         [
-            InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{language_code}'),
-            InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{language_code}')
+            InlineKeyboardButton(text=submenu_texts[4], callback_data=f'filter_search_{content_type}'),
+            InlineKeyboardButton(text=submenu_texts[5], callback_data=f'filter_back_{content_type}')
         ],
         [
             InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data=f'filter_reset_{language_code}')
@@ -218,8 +224,6 @@ def generate_release_date_submenu(language_code, content_type):
 
 def search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, language_code):
     discover = tmdb.Discover()
-    print_info(f"Search parameters: genre_filter={genre_filter}, start_date={start_date}, end_date={end_date},"
-               f"min_votes = {min_votes}, max_votes = {max_votes}")
 
     response = discover.movie(with_genres=genre_filter, primary_release_date_gte=start_date,
                               primary_release_date_lte=end_date,
@@ -228,36 +232,30 @@ def search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rati
 
     results = response['results']
 
-    print_info(f"Search results: {results}")
-    for movie in results:
-        print_info(f"Vote count for {movie['title']}: {movie.get('vote_count', 0)}")
     return results
 
 
-async def format_movie(user_id, movie):
-    base_url = "https://image.tmdb.org/t/p/w500"
-    poster_path = movie['poster_path']
-    title = movie['title']
-    overview = movie['overview']
-    release_date = movie['release_date']
-    genre_ids = movie['genre_ids']
+def search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating, language_code):
+    discover = tmdb.Discover()
 
-    genre_names = get_genre_names(genre_ids)
+    response = discover.tv(with_genres=genre_filter, first_air_date_gte=start_date,
+                           first_air_date_lte=end_date,
+                           vote_count_lte=max_votes, vote_count_gte=min_votes, sort_by=rating,
+                           language=language_code)
 
-    text = f"Title: {title}\nOverview: {overview}\nRelease Date: {release_date}\nGenres: {', '.join(genre_names)}"
+    results = response['results']
 
-    if poster_path is not None:
-        await bot.send_photo(chat_id=user_id, photo=URLInputFile(base_url + poster_path), caption=text)
-    else:
-        await bot.send_message(chat_id=user_id, text=text)
+    return results
 
 
-def get_genre_names(genre_ids):
-    genres = tmdb.Genres()
-    response = genres.movie_list()
-    genre_list = response['genres']
-    genre_dict = {genre['id']: genre['name'] for genre in genre_list}
-    genre_names = [genre_dict[genre_id] for genre_id in genre_ids if genre_id in genre_dict]
+def get_genre_names(genre_ids, language_code):
+    genres_api = Genres()
+    all_genres = genres_api.movie_list(language=language_code)['genres']
+
+    id_to_name = {genre['id']: genre['name'] for genre in all_genres}
+
+    genre_names = [id_to_name[genre_id] for genre_id in genre_ids if genre_id in id_to_name]
+
     return genre_names
 
 
@@ -286,7 +284,6 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
     genres = get_genres(tmdb_language_code)
 
     for content in response['results'][current_rating_movie:current_rating_movie + 5]:
-        print_info(f"Content: {content_type} {content}")
         await send_content_details(content, content_type, genres, language_code, callback_query)
 
     current_rating_movie += 5
@@ -376,6 +373,7 @@ def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_averag
     rating_text = get_text(lang, 'rating_card')
 
     formatted_genres = ' | '.join(genre_names)
+
     formatted_adult = get_text(lang, 'yes') if adult is not None and adult else get_text(lang, 'no')
     message_parts = [
         f'<b>{title}</b>\n\n',
@@ -571,3 +569,63 @@ async def fetch_random_tv_shows(user_id):
         await update_current_page_random(user_id, 'current_random_tv_page')
         tv_counters[user_id] = 0
     return all_tv_shows
+
+
+async def send_next_page_filter(call, language_code, content_type):
+    user_id = call.from_user.id
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+
+    # Get the filters from the database
+    filters = get_filters_movie_from_db(user_id) if content_type == 'movie' else get_filters_series_from_db(user_id)
+
+    genre_filter = filters.get('genre')
+    release_date_filter = filters.get('release_date')
+    user_rating_filter = filters.get('user_rating')
+    rating = filters.get('rating')
+
+    if release_date_filter is not None:
+        start_year, end_year = release_date_filter.split('-')
+        start_date = f'{start_year}-01-01'
+        end_date = f'{end_year}-12-31'
+    else:
+        start_date = None
+        end_date = None
+
+    if user_rating_filter is not None:
+        min_votes, max_votes = user_rating_filter.split('-')
+    else:
+        min_votes = None
+        max_votes = None
+
+    # Get the current movie and page from the database
+    current_movie, current_page, *_ = get_filter_pages_and_movies_by_user_id(user_id)
+    print_info(f'Current movie: {current_movie}, current page: {current_page}')
+
+    current_movie+=5
+    # Get the movies or TV shows
+    if content_type == 'movie':
+        contents = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code)
+    else:  # content_type == 'tv'
+        contents = search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code)
+
+    # Send the next 5 movies or TV shows
+    for _ in range(5):
+        if current_movie >= len(contents):
+            current_movie = 0
+            current_page += 1
+            if content_type == 'movie':
+                contents = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating,
+                                         tmdb_language_code)
+            else:  # content_type == 'tv'
+                contents = search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating,
+                                           tmdb_language_code)
+        content = contents[current_movie]
+        genres = get_genres(tmdb_language_code)
+        await send_content_details(content, content_type, genres, language_code, call)
+        current_movie += 1
+
+    # Save the current movie and page back to the database
+    save_filter_pages_and_movies_by_user_id(user_id, current_movie, current_page)
+
+    # Create a keyboard with a next button
+    await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}')
