@@ -62,6 +62,18 @@ def create_search_movie_table():
         print("Table 'search_movie' created successfully")
 
 
+def create_search_series_table():
+    with connection.cursor() as cursor:
+        cursor.execute("CREATE TABLE IF NOT EXISTS search_series ("
+                       "id SERIAL PRIMARY KEY, "
+                       "user_id INT UNIQUE, "
+                       "genre_id INT, "
+                       "year_range VARCHAR(255) DEFAULT 'any', "
+                       "user_rating VARCHAR(255) DEFAULT 'any', "
+                       "rating VARCHAR(32) DEFAULT 'any');")
+        print("Table 'search_series' created successfully")
+
+
 def create_saved_series_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS saved_series ("
@@ -85,6 +97,7 @@ async def setup_database():
     create_user_pages_table()
     create_saved_movies_table()
     create_search_movie_table()
+    create_search_series_table()
     create_saved_series_table()
 
 
@@ -110,7 +123,7 @@ def get_saved_series_from_db(user_id):
         return cursor.fetchall()
 
 
-def get_filters_from_db(user_id):
+def get_filters_movie_from_db(user_id):
     with connection.cursor() as cursor:
         cursor.execute("SELECT genre_id, year_range, user_rating, rating FROM search_movie WHERE user_id = %s;",
                        (user_id,))
@@ -126,12 +139,37 @@ def get_filters_from_db(user_id):
             return None
 
 
-def reset_filters_in_db(user_id):
+def get_filters_series_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT genre_id, year_range, user_rating, rating FROM search_series WHERE user_id = %s;",
+                       (user_id,))
+        result = cursor.fetchone()
+        if result is not None:
+            return {
+                'genre': result[0],
+                'release_date': result[1],
+                'user_rating': result[2],
+                'rating': result[3]
+            }
+        else:
+            return None
+
+
+def reset_filters_movies_in_db(user_id):
     with connection.cursor() as cursor:
         cursor.execute(
             "UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
             (user_id,))
         connection.commit()
+
+
+def reset_filters_series_in_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_series SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
+            (user_id,))
+        connection.commit()
+
 
 
 def update_user_language_from_db(user_id, username, language):
@@ -174,10 +212,47 @@ def save_fields_to_table_search_movie_db(user_id, genre_id=None, year_range=None
                        [user_id, genre_id, year_range, user_rating, rating] + update_values)
 
 
+def save_fields_to_table_search_series_db(user_id, genre_id=None, year_range=None, user_rating=None, rating=None):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        update_fields = []
+        update_values = []
+        if genre_id is not None:
+            update_fields.append("genre_id = %s")
+            update_values.append(genre_id)
+        if year_range is not None:
+            update_fields.append("year_range = %s")
+            update_values.append(year_range)
+        if user_rating is not None:
+            update_fields.append("user_rating = %s")
+            update_values.append(user_rating)
+        if rating is not None:
+            update_fields.append("rating = %s")
+            update_values.append(rating)
+        update_clause = ", ".join(update_fields)
+        cursor.execute(f"INSERT INTO search_series (user_id, genre_id, year_range, user_rating, rating) "
+                       f"VALUES (%s, %s, %s, %s, %s) "
+                       f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
+                       [user_id, genre_id, year_range, user_rating, rating] + update_values)
+
+
+def save_fields_to_db_by_type(user_id, type_of_filter, content_type):
+    if content_type == "movie":
+        save_fields_to_table_search_movie_db(user_id, type_of_filter)
+    elif content_type == "series":
+        save_fields_to_table_search_series_db(user_id, type_of_filter)
+
+
 def delete_movie_from_db(user_id, movie_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
         cursor.execute("DELETE FROM saved_movies WHERE user_id = %s AND movie_id = %s;", (user_id, movie_id))
+
+
+def delete_tv_from_db(user_id, tv_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute("DELETE FROM saved_series WHERE user_id = %s AND series_id = %s;", (user_id, tv_id))
 
 
 def get_current_popular_by_user_id(user_id):
