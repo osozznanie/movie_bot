@@ -159,22 +159,6 @@ def get_filters_series_from_db(user_id):
             return None
 
 
-def reset_filters_movies_in_db(user_id):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
-            (user_id,))
-        connection.commit()
-
-
-def reset_filters_series_in_db(user_id):
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "UPDATE search_series SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
-            (user_id,))
-        connection.commit()
-
-
 def update_user_language_from_db(user_id, username, language):
     with connection.cursor() as cursor:
         cursor.execute("INSERT INTO users (user_id, username, language, reg_date, update_date) "
@@ -268,11 +252,45 @@ def get_filter_pages_and_movies_by_user_id(user_id):
         return result
 
 
+def get_filter_movie_page_movie_by_user_id(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT current_filter_movie_page, current_filter_movie_movie "
+            "FROM user_pages WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result
+
+
+def get_filter_series_page_movie_by_user_id(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT current_filter_tv_page, current_filter_tv_movie "
+            "FROM user_pages WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result
+
+
 def set_filter_pages_and_movies_by_user_id(user_id, movie_page, tv_page, movie_movie, tv_movie):
     with connection.cursor() as cursor:
         cursor.execute(
             "UPDATE user_pages SET current_filter_movie_page = %s, current_filter_tv_page = %s, current_filter_movie_movie = %s, current_filter_tv_movie = %s "
             "WHERE user_id = %s", (movie_page, tv_page, movie_movie, tv_movie, user_id))
+        connection.commit()
+
+
+def set_filter_movie_page_movie_by_user_id(user_id, movie_page, movie_movie):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE user_pages SET current_filter_movie_page = %s, current_filter_movie_movie = %s "
+            "WHERE user_id = %s", (movie_page, movie_movie, user_id))
+        connection.commit()
+
+
+def set_filter_series_page_movie_by_user_id(user_id, movie_page, movie_movie):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE user_pages SET current_filter_tv_page = %s, current_filter_tv_movie = %s "
+            "WHERE user_id = %s", (movie_page, movie_movie, user_id))
         connection.commit()
 
 
@@ -329,4 +347,20 @@ def update_user_pages_from_db(user_id):
             "INSERT INTO user_pages (user_id) "
             "VALUES (%s) "
             "ON CONFLICT (user_id) DO NOTHING;",
+            (user_id,))
+
+
+def reset_filters_movie(user_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
+            (user_id,))
+
+
+def reset_filters_series(user_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_series SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
             (user_id,))

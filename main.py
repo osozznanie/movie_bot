@@ -1,7 +1,4 @@
-﻿# Description: Main file for bot logic and handlers (client side)
-import asyncio
-import logging
-import config
+﻿import logging
 
 from aiogram import Bot
 from aiogram import Dispatcher
@@ -9,7 +6,7 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 
 from db.database import *
-from utils import api
+from utils import api, texts
 from utils.misc import *
 from utils.texts import TEXTS
 
@@ -20,30 +17,10 @@ connection = None
 
 shown_movies = set()
 
-# ========================================= Variable for filters ========================================= #
-genre_names_filter = {}
-# --------------
-user_genre_choice = {}
-user_release_date_choice = {}
-user_vote_count_choice = {}
-user_rating_choice = {}
-
 # ========================================= Keyboard ========================================= #
 
-kb = [[types.KeyboardButton(text='menu'), types.KeyboardButton(text='language')],
-      [types.KeyboardButton(text='saved'), ]]
-
-
-# ========================================= Handler for menu keyboard ========================================= #
-
-@dp.message(lambda message: message.text.lower() == 'menu')
-async def menu_command(message: types.Message):
-    await cmd_menu(message)
-
-
-@dp.message(lambda message: message.text.lower() == 'language')
-async def language_command(message: types.Message):
-    await cmd_language(message)
+kb = [[types.KeyboardButton(text='/menu'), types.KeyboardButton(text='/language')],
+      [types.KeyboardButton(text='/saved'), ]]
 
 
 # ========================================= Client side ========================================= #
@@ -53,13 +30,11 @@ async def cmd_start(message: types.Message):
     user_id = message.from_user.id
 
     user_language = get_user_language_from_db(user_id)
-
     main_keyboard, keyboard_markup = language_keyboard()
+    message = get_text(user_language, 'second_tap_to_start')
 
     if user_language:
-        await message.answer(
-            f"You have set your language to <b>{user_language}</b>. If you want to change it, use the language button.",
-            reply_markup=main_keyboard, parse_mode=ParseMode.HTML)
+        await bot.send_message(user_id, message, reply_markup=main_keyboard, parse_mode=ParseMode.HTML)
     else:
         await message.answer(
             f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
@@ -74,7 +49,8 @@ user_languages = {}
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
     print_info(f"User {message.from_user.id} chose language {language_code} = cmd_language")
-    await message.answer(TEXTS[language_code]['select_language'], reply_markup=language_keyboard())
+    *_, keyboard_markup = language_keyboard()
+    await message.answer(TEXTS[language_code]['select_language'], reply_markup=keyboard_markup)
 
 
 @dp.callback_query(lambda query: query.data.startswith('set_language'))
@@ -173,6 +149,12 @@ async def reset_page_callback(call):
     await reset_movies(call.from_user.id, call.message.chat.id)
 
 
+@dp.callback_query(lambda query: query.data.startswith('filter_reset_page_'))
+async def reset_page_filter_callback(call):
+    await call.answer(show_alert=False)
+    await reset_filters(call.from_user.id, call.message.chat.id, call.data.split('_')[3])
+
+
 @dp.callback_query(lambda query: query.data.startswith('next_page_filter'))
 async def next_page_filter_callback(call):
     user_id = call.from_user.id
@@ -248,12 +230,6 @@ async def process_callback_filter_genre(call: types.CallbackQuery):
         await generate_genre_submenu(call, tmdb_language_code, content_type)
     elif content_type == 'tv':
         await generate_genre_submenu(call, tmdb_language_code, content_type)
-
-    # genres_api = Genres()
-    # genres_response = genres_api.movie_list(language=tmdb_language_code)
-    # genre_names_filter[call.from_user.id] = {genre['id']: genre['name'] for genre in genres_response['genres']}
-    # get_genres(language_code)
-    # await generate_genre_submenu(call, tmdb_language_code)
 
 
 @dp.callback_query(lambda query: query.data.startswith('genre_'))
@@ -378,61 +354,9 @@ async def process_search(call: types.CallbackQuery):
     user_id = call.from_user.id
     language_code = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[2]
-    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
-    print_info(content_type)
-
-    filters = get_filters_movie_from_db(user_id) if content_type == 'movie' else get_filters_series_from_db(user_id)
-
-    print_info(f"Filters: {filters}")
-    if filters is None:
-        await bot.send_message(user_id,
-                               "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
-    else:
-        genre_filter = filters.get('genre')
-        release_date_filter = filters.get('release_date')
-        user_rating_filter = filters.get('user_rating')
-        rating = filters.get('rating')
-
-        if not any([genre_filter, release_date_filter, user_rating_filter, rating]):
-            await bot.send_message(user_id,
-                                   "Вы не выбрали фильтры для фильма. Пожалуйста, выберите хотя бы один фильтр и попробуйте снова.")
-        else:
-            if release_date_filter is not None:
-                start_year, end_year = release_date_filter.split('-')
-                start_date = f'{start_year}-01-01'
-                end_date = f'{end_year}-12-31'
-            else:
-                start_date = None
-                end_date = None
-
-            if user_rating_filter is not None:
-                min_votes, max_votes = user_rating_filter.split('-')
-            else:
-                min_votes = None
-                max_votes = None
-
-            current_movie, current_page, *_ = get_filter_pages_and_movies_by_user_id(user_id)
-
-            movies = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code)
-
-            for _ in range(5):
-                if current_movie >= len(movies):
-                    current_movie = 0
-                    current_page += 1
-                    movies = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating,
-                                           tmdb_language_code)
-                movie = movies[current_movie]
-                genres = get_genres(tmdb_language_code)
-                await send_content_details(movie, content_type, genres, language_code, call)
-                current_movie += 1
-
-            save_filter_pages_and_movies_by_user_id(user_id, current_movie, current_page)
-
-            await create_keyboard_with_next_button(user_id, language_code, content_type,
-                                                   f'next_page_filter_{content_type}')
-
-        await call.answer(show_alert=False)
+    await send_next_page_filter(call, language_code, content_type)
+    await call.answer(show_alert=False)
 
 
 # ========================================= Saved movies =========================================  #
@@ -447,6 +371,10 @@ async def show_saved_media(call):
         saved_media = [movie_id[0] for movie_id in get_saved_movies_from_db(user_id)]
     else:  # content_type == 'tv':
         saved_media = [series_id[0] for series_id in get_saved_series_from_db(user_id)]
+
+    if not saved_media:
+        not_found = await bot.send_message(call.from_user.id, get_text(user_language, 'not_found_saved_content'))
+        await delete_message_after_delay(5, call.from_user.id, not_found.message_id)
 
     for media_id in saved_media:
         message_text, poster_path = get_media_details_and_format_message(media_id, content_type, user_language,
@@ -476,7 +404,7 @@ async def delete_callback(query: types.CallbackQuery):
 
 
 # ========================================= Back =========================================  #
-@dp.callback_query(lambda query: query.data == 'back')
+@dp.callback_query(lambda query: query.data.startswith('back'))
 async def set_back_callback(query: types.CallbackQuery):
     language_code = get_user_language_from_db(query.from_user.id)
 
@@ -510,26 +438,13 @@ async def cmd_menu(message: types.Message):
 
 
 # =========================================  Saved  =========================================  #
-
-@dp.message(lambda message: message.text.lower() == 'saved')
-async def process_saved(message: types.CallbackQuery):
-    await cmd_menu_for_save(message.message)
-
-
 @dp.message(Command("saved"))
 async def cmd_menu_for_save(message: types.Message):
     user_id = message.from_user.id
     language_code = get_user_language_from_db(user_id)
     select_option_text = get_text(language_code, 'select_option')
 
-    await send_option_message(message, language_code, select_option_text)
-
-
-# ========================================= Another =========================================  #
-# @dp.callback_query(lambda c: c.data)
-# async def process_callback(callback_query: types.CallbackQuery):
-#     await bot.answer_callback_query(callback_query.id)
-#     await bot.send_message(callback_query.from_user.id, f"You chose option {callback_query.data}")
+    await send_option_message(message, language_code, select_option_text, "kb")
 
 
 # ========================================= Testing and Exception Handling ========================================= #
