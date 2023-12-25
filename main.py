@@ -146,7 +146,8 @@ async def load_next_movies_callback(call):
 
 @dp.callback_query(lambda query: query.data.startswith('reset_page'))
 async def reset_page_callback(call):
-    await reset_movies(call.from_user.id, call.message.chat.id)
+    await call.answer(show_alert=False)
+    await reset_movies(call, call.from_user.id, call.message.chat.id)
 
 
 @dp.callback_query(lambda query: query.data.startswith('filter_reset_page_'))
@@ -157,6 +158,8 @@ async def reset_page_filter_callback(call):
 
 @dp.callback_query(lambda query: query.data.startswith('next_page_filter'))
 async def next_page_filter_callback(call):
+    await call.answer(show_alert=False)
+
     user_id = call.from_user.id
     language_code = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[3]
@@ -246,12 +249,8 @@ async def process_callback_genre(call: types.CallbackQuery):
                                               rating=None)
 
     message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
-    await bot.send_message(call.from_user.id, f"You chose genre {chosen_genre_id}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
-    await bot.send_message(call.from_user.id, f"Вы выбрали жанр, вы можете добавить еще "
-                                              f"фильтры или нажать 'Поск' для "
-                                              f"получения результата")
     await call.answer(show_alert=False)
 
 
@@ -262,10 +261,8 @@ async def process_callback_filter_release_date(call: types.CallbackQuery):
 
     release_date_keyboard = generate_release_date_submenu(language_code, content_type)
 
-    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
-
-    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_releaseDate_txt'),
-                           reply_markup=release_date_keyboard)
+    await bot.edit_message_text(chat_id=call.from_user.id, text=get_text(language_code, 'filter_releaseDate_txt'),
+                                reply_markup=release_date_keyboard, message_id=call.message.message_id)
 
 
 @dp.callback_query(lambda query: query.data.startswith('release_date_'))
@@ -280,7 +277,6 @@ async def process_callback_filter_release_date_choice(call: types.CallbackQuery)
         save_fields_to_table_search_series_db(call.from_user.id, None, chosen_release_date_option, None, None)
 
     message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
-    await bot.send_message(call.from_user.id, f"You chose option {chosen_release_date_option}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
     await call.answer(show_alert=False)
@@ -293,10 +289,9 @@ async def process_callback_filter_vote_count(call: types.CallbackQuery):
 
     keyboard_markup_vote_count = generate_vote_count_submenu(language_code, content_type)
 
-    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
-
-    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_voteCount_txt'),
-                           reply_markup=keyboard_markup_vote_count)
+    await bot.edit_message_text(text=get_text(language_code, 'filter_voteCount_txt'), chat_id=call.from_user.id,
+                                message_id=call.message.message_id,
+                                reply_markup=keyboard_markup_vote_count)
 
 
 @dp.callback_query(lambda query: query.data.startswith('vote_count_'))
@@ -313,7 +308,6 @@ async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
         save_fields_to_table_search_series_db(call.from_user.id, None, None, chosen_vote_count_option, None)
 
     message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
-    await bot.send_message(call.from_user.id, f"You chose option {chosen_vote_count_option}")
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
     await call.answer(show_alert=False)
@@ -325,10 +319,9 @@ async def process_callback_filter_rating(call: types.CallbackQuery):
     content_type = call.data.split('_')[2]
 
     keyboard_markup_rating = generate_rating_submenu(language_code, content_type)
-    await bot.delete_message(chat_id=call.from_user.id, message_id=call.message.message_id)
-
-    await bot.send_message(call.from_user.id, get_text(language_code, 'filter_rating_txt'),
-                           reply_markup=keyboard_markup_rating)
+    await bot.edit_message_text(text=get_text(language_code, 'filter_rating_txt')
+                                , chat_id=call.from_user.id, message_id=call.message.message_id,
+                                reply_markup=keyboard_markup_rating)
 
 
 @dp.callback_query(lambda query: query.data.startswith('sort_option_'))
@@ -374,7 +367,7 @@ async def show_saved_media(call):
 
     if not saved_media:
         not_found = await bot.send_message(call.from_user.id, get_text(user_language, 'not_found_saved_content'))
-        await delete_message_after_delay(5, call.from_user.id, not_found.message_id)
+        await delete_message_after_delay(10, call.from_user.id, not_found.message_id)
 
     for media_id in saved_media:
         message_text, poster_path = get_media_details_and_format_message(media_id, content_type, user_language,

@@ -7,8 +7,8 @@ connection = None
 
 def connect_to_database():
     global connection
-    connection = psycopg2.connect(host=config.host, database=os.getenv("db_name"), password=os.getenv("db_pass"),
-                                  user=os.getenv("db_user"), port=os.getenv("db_port"))
+    connection = psycopg2.connect(host=config.host, database=config.db_name, password=config.db_password,
+                                  user=config.db_user, port=config.db_port)
     connection.autocommit = True
 
     with connection.cursor() as cursor:
