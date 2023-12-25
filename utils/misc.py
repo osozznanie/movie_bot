@@ -118,7 +118,7 @@ async def send_content_details(content, content_type, genres, language_code, cal
     # message_ids.append(message.message_id)
 
 
-async def reset_movies(user_id, chat_id):
+async def reset_movies(call, user_id, chat_id):
     current_page = 1
     current_movie = 0
     current_rating_movie = 0
@@ -135,7 +135,8 @@ async def reset_movies(user_id, chat_id):
 
     await update_current_page_random(user_id, 'current_random_movie_page')
 
-    await bot.send_message(chat_id, get_text(get_user_language_from_db(user_id), 'movie_list_reset'))
+    msg = await bot.send_message(chat_id, get_text(get_user_language_from_db(user_id), 'movie_list_reset'))
+    await delete_message_after_delay(5, call.from_user.id, msg.message_id)
 
 
 async def reset_filters(user_id, chat_id, content_type):
@@ -147,7 +148,8 @@ async def reset_filters(user_id, chat_id, content_type):
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
     message = await bot.send_message(chat_id, get_text(get_user_language_from_db(user_id), 'filters_reset'))
-    await delete_message_after_delay(3, chat_id, message.message_id)
+    await delete_message_after_delay(5, chat_id, message.message_id)
+
 
 def generate_filter_submenu(language_code, content_type="any"):
     submenu_texts = get_text(language_code, 'filter_submenu')
@@ -605,6 +607,10 @@ async def send_next_page_filter(call, language_code, content_type):
     user_rating_filter = filters.get('user_rating')
     rating = filters.get('rating')
 
+    if not any([genre_filter, release_date_filter, user_rating_filter, rating]):
+        await bot.send_message(user_id, get_text(language_code, 'no_filters'))
+        return
+
     if release_date_filter is not None:
         start_year, end_year = release_date_filter.split('-')
         start_date = f'{start_year}-01-01'
@@ -632,8 +638,13 @@ async def send_next_page_filter(call, language_code, content_type):
         current_page, current_movie = get_filter_series_page_movie_by_user_id(user_id)
         contents = search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code,
                                    current_page)
+
+    if not contents:
+        msg = await bot.send_message(user_id, get_text(language_code, 'no_results'))
+        await delete_message_after_delay(5, user_id, msg.message_id)
+        return
     for _ in range(5):
-        if current_movie >= len(contents):
+        if not contents or current_movie >= len(contents):
             current_movie = 0
             current_page += 1
             if content_type == 'movie':
@@ -644,10 +655,11 @@ async def send_next_page_filter(call, language_code, content_type):
                 contents = search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating,
                                            tmdb_language_code, current_page)
 
-        content = contents[current_movie]
-        genres = get_genres(tmdb_language_code)
-        await send_content_details(content, content_type, genres, language_code, call)
-        current_movie += 1
+        if contents:
+            content = contents[current_movie]
+            genres = get_genres(tmdb_language_code)
+            await send_content_details(content, content_type, genres, language_code, call)
+            current_movie += 1
 
     if content_type == 'movie':
         set_filter_movie_page_movie_by_user_id(user_id, current_page, current_movie)
