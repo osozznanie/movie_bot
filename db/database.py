@@ -32,7 +32,7 @@ def create_user_pages_table():
         cursor.execute("CREATE TABLE IF NOT EXISTS user_pages ("
                        "user_id INT PRIMARY KEY, "
                        "current_popular_page INT DEFAULT 1, "
-                       "current_popular_movie INT DEFAULT 0, "
+                       "current_popular_movie INT DEFAULT 9, "
                        "current_rating_page INT DEFAULT 1, "
                        "current_rating_movie INT DEFAULT 0,"
                        "current_random_movie_page INT DEFAULT 1,"

@@ -1,6 +1,6 @@
 ﻿import logging
 
-from aiogram import Bot
+from aiogram import Bot, types, filters
 from aiogram import Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
@@ -31,10 +31,10 @@ async def cmd_start(message: types.Message):
 
     user_language = get_user_language_from_db(user_id)
     main_keyboard, keyboard_markup = language_keyboard()
-    message = get_text(user_language, 'second_tap_to_start')
+    message_txt = get_text(user_language, 'second_tap_to_start')
 
     if user_language:
-        await bot.send_message(user_id, message, reply_markup=main_keyboard, parse_mode=ParseMode.HTML)
+        await bot.send_message(user_id, message_txt, reply_markup=main_keyboard, parse_mode=ParseMode.HTML)
     else:
         await message.answer(
             f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
@@ -86,7 +86,6 @@ async def set_menu_callback(query: types.CallbackQuery):
     menu_code = query.data.split('_')[2]
     language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
-    print_info(f"User {query.from_user.id} chose menu option {menu_code} = set_menu_callback")
 
     select_option_text = get_text(language_code, 'select_option')
 
@@ -142,6 +141,17 @@ async def load_next_movies_callback(call):
         await send_next_media(call, language_code, 'movie')
     elif content_type == 'tv':
         await send_next_media(call, language_code, 'tv')
+
+
+@dp.callback_query(lambda query: query.data.startswith('load_previous_'))
+async def load_previous_movies_callback(call):
+    content_type = call.data.split('_')[2]
+
+    language_code = get_user_language_from_db(call.from_user.id)
+    if content_type == 'movie':
+        await send_previous_media(call, language_code, 'movie')
+    elif content_type == 'tv':
+        await send_previous_media(call, language_code, 'tv')
 
 
 @dp.callback_query(lambda query: query.data.startswith('reset_page'))
@@ -395,7 +405,6 @@ async def delete_callback(query: types.CallbackQuery):
 
     await bot.delete_message(chat_id=query.message.chat.id, message_id=query.message.message_id)
 
-
 # ========================================= Back =========================================  #
 @dp.callback_query(lambda query: query.data.startswith('back'))
 async def set_back_callback(query: types.CallbackQuery):
@@ -438,6 +447,27 @@ async def cmd_menu_for_save(message: types.Message):
     select_option_text = get_text(language_code, 'select_option')
 
     await send_option_message(message, language_code, select_option_text, "kb")
+
+
+# ========================================= Search film by id =========================================  #
+from aiogram import types
+import re
+
+
+@dp.message()
+async def cmd_film(message: types.Message):
+    match = re.match(r'^/film(\d+)$', message.text)
+    if message.text.startswith('/film'):
+        if match:
+            film_id = match.group(1)
+
+            await send_content_details_by_film_id(film_id, 'movie', message)
+        else:
+            await message.answer("Please include a film ID.")
+    else:
+        msg_text = await message.answer(
+            get_text(get_user_language_from_db(message.from_user.id), 'cannot_read_message'))
+        await delete_message_after_delay(7, message.from_user.id, msg_text.message_id)
 
 
 # ========================================= Testing and Exception Handling ========================================= #

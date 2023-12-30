@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 
 import tmdbsimple as tmdb
@@ -52,37 +53,54 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
 
     genres = get_genres(tmdb_language_code)
 
-    for content in response['results'][current_movie:current_movie + 5]:
-        await send_content_details(content, content_type, genres, language_code, callback_query)
+    message_text = ""
+    index = 1
+    for content in response['results'][current_movie:current_movie + 9]:
+        content_details = await send_content_details(index, content, content_type, genres, language_code)
+        message_text += content_details + "\n\n"
+        index += 1
 
-    current_movie += 5
+    current_movie += 9
     if current_movie >= len(response['results']):
         current_page += 1
         current_movie = 0
 
     update_current_popular(callback_query.from_user.id, current_page, current_movie)
 
+    await bot.send_message(callback_query.message.chat.id, text=message_text, parse_mode='HTML')
+
     await create_keyboard_with_next_button(callback_query.from_user.id, language_code, content_type)
 
 
-async def create_keyboard_with_next_button(user_id, language_code, content_type,
-                                           call_for_next=None):
+async def create_keyboard_with_next_button(user_id, language_code, content_type, call_for_next=None):
     if call_for_next is None:
         call_for_next = f'load_next_{content_type}_popular'
-    next_button = types.InlineKeyboardButton(text=get_text(language_code, 'next'),
-                                             callback_data=call_for_next)
-    reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'),
-                                              callback_data=f'reset_page_{content_type}')
 
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
-    message_text = get_text(language_code, 'next_5_movies')
-    await bot.send_message(user_id, text=message_text, reply_markup=keyboard)
+    next_button_text = get_text(language_code, 'next')
+    back_button_text = get_text(language_code, 'back')
+    reset_button_text = get_text(language_code, 'reset')
+
+    buttons = [
+        [
+            types.InlineKeyboardButton(text=back_button_text, callback_data=f'load_previous_{content_type}'),
+            types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
+        ],
+        [
+            types.InlineKeyboardButton(text=reset_button_text, callback_data=f'reset_page_{content_type}')
+        ]
+    ]
+
+    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-async def send_content_details(content, content_type, genres, language_code, callback_query):
+    msg_text = get_text(language_code, 'next_movies')
+    await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
+
+
+async def send_content_details(index, content, content_type, genres, language_code):
+    if index == None:
+        index = 1
     title = content['title'] if content_type == 'movie' else content['name']
-    poster_url = 'https://image.tmdb.org/t/p/w500' + content['poster_path']
-    img = URLInputFile(poster_url)
     vote_average = content['vote_average']
     genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
     if content_type == 'movie':
@@ -100,22 +118,18 @@ async def send_content_details(content, content_type, genres, language_code, cal
 
     original_title = content['original_title'] if content_type == 'movie' else content['original_name']
     release_date = content['release_date'] if content_type == 'movie' else content['first_air_date']
+    overview = content['overview'] if 'overview' in content else 'N/A'
+    if len(overview) > 100:
+        overview = overview[:100] + '...'
 
-    message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
-                                                       release_date.split('-')[0], runtime, content['overview'],
-                                                       content_type, adult, additional_info)
+    message_text = get_message_text_for_card_from_TMDB(index, language_code, title, original_title, vote_average,
+                                                       genre_names,
+                                                       release_date.split('-')[0], runtime, overview,
+                                                       content_type, adult, additional_info, content['id'])
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
 
-    keyboard = create_keyboard(content["id"], language_code, 'save', check_type(content_type))
-    await bot.send_chat_action(callback_query.message.chat.id, action='upload_photo')
-
-    await asyncio.sleep(0.5)
-
-    message = await bot.send_photo(callback_query.message.chat.id, photo=img, caption=message_text,
-                                   parse_mode='HTML',
-                                   reply_markup=keyboard)
-    # message_ids.append(message.message_id)
+    return message_text or ""
 
 
 async def reset_movies(call, user_id, chat_id):
@@ -324,7 +338,7 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
     reset_button = types.InlineKeyboardButton(text=get_text(language_code, 'reset'), callback_data='reset_page')
 
     next_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[next_button, reset_button]])
-    await bot.send_message(chat_id, get_text(language_code, 'next_5_movies'), reply_markup=next_keyboard)
+    await bot.send_message(chat_id, get_text(language_code, 'next_movies'), reply_markup=next_keyboard)
 
     await bot.answer_callback_query(callback_query.id)
 
@@ -385,8 +399,8 @@ def menu_keyboard(language_code):
     return keyboard_markup
 
 
-def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names, release_year, runtime,
-                                        overview, content_type, adult=None, additional_info=None):
+def get_message_text_for_card_by_film_id(lang, title, original_title, vote_average, genre_names, release_year, runtime,
+                                         overview, content_type, adult=None, additional_info=None, id=None):
     type_text = get_text(lang, 'type')
     release_year_text = get_text(lang, 'release_year')
     runtime_text = get_text(lang, 'runtime')
@@ -398,7 +412,7 @@ def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_averag
 
     formatted_adult = get_text(lang, 'yes') if adult is not None and adult else get_text(lang, 'no')
     message_parts = [
-        f'<b>{title}</b>\n\n',
+        f'<b>{title}</b> (/film{id})\n\n',
         f'<i>{original_title}</i>\n\n',
         f'📺 {type_text}: {get_text(lang, content_type)}\n',
         f'🎥 {release_year_text}: {release_year}\n'
@@ -420,6 +434,34 @@ def get_message_text_for_card_from_TMDB(lang, title, original_title, vote_averag
         message_parts.append(f'<b>{description_text}:</b>\n{overview}')  # Made the description bold
 
     return ''.join(message_parts)
+
+
+def get_message_text_for_card_from_TMDB(index, lang, title, original_title, vote_average, genre_names, release_year,
+                                        runtime,
+                                        overview, content_type, adult=None, additional_info=None, id=None):
+    rating_text = get_text(lang, 'rating_card')
+    release_year_text = get_text(lang, 'release_year')
+    genres_text = get_text(lang, 'genres')
+    description_text = get_text(lang, 'description')
+
+    formatted_genres = ' | '.join(genre_names)
+
+    message_parts = [
+        f'{index}. <b> {title} (/film{id}) </b>\n',
+        f'✅ {rating_text}: {vote_average}/10\n',
+        f'🎥 {release_year_text}: {release_year}\n',
+        f'ℹ️ {formatted_genres}\n'
+    ]
+
+    if overview:
+        message_parts.append(f'<b>{description_text}</b>:\n{overview}\n')
+
+    message_text = ''.join(message_parts)
+
+    if len(message_text) > 1024:
+        message_text = message_text[:1021] + '...'
+
+    return message_text or ""
 
 
 def get_text(lang, key):
@@ -467,7 +509,7 @@ def get_media_details_and_format_message(media_id, media_type, lang, tmdb_langua
 
     message_text = get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names,
                                                        release_year, runtime,
-                                                       overview, media_type, adult, additional_info)
+                                                       overview, media_type, adult, additional_info, media_id)
 
     return message_text, poster_path
 
@@ -511,6 +553,30 @@ def extract_content_info(content_info, content_type):
     return title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info
 
 
+async def send_content_details_by_film_id(content_id, content_type, call):
+    language_code = get_user_language_from_db(call.from_user.id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+
+    content_info = get_movie_details_from_TMDB(content_id, tmdb_language_code)
+    print_info(content_info)
+    title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
+        content_info, content_type)
+
+    message_text = get_message_text_for_card_by_film_id(language_code, title, original_title, vote_average,
+                                                        genre_names,
+                                                        release_year, runtime, overview, content_type, adult,
+                                                        additional_info, content_id)
+
+    if len(message_text) > 1024:
+        message_text = message_text[:1021] + '...'
+
+    keyboard = create_keyboard(content_id, language_code, 'save', check_type(content_type))
+
+    await bot.send_photo(chat_id=call.from_user.id, photo=URLInputFile(poster_url), caption=message_text,
+                         reply_markup=keyboard,
+                         parse_mode='HTML')
+
+
 async def send_random_content(query, language_code, tmdb_language_code):
     content_type = random.choice(['movie', 'tv'])
 
@@ -528,7 +594,7 @@ async def send_random_content(query, language_code, tmdb_language_code):
 
     message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
                                                        release_year, runtime, overview, content_type, adult,
-                                                       additional_info)
+                                                       additional_info, random_content['id'])
 
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
@@ -666,3 +732,48 @@ async def send_next_page_filter(call, language_code, content_type):
     elif content_type == 'tv':
         set_filter_series_page_movie_by_user_id(user_id, current_page, current_movie)
     await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}')
+
+
+async def send_previous_media(call, language_code, content_type):
+    current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
+
+    last_shown_movie = current_movie
+
+    last_shown_movie -= 9
+    if last_shown_movie < 0:
+        if current_page == 1 or last_shown_movie == 9:
+            current_page = 1
+            last_shown_movie = 9
+        else:
+            current_page -= 1
+            last_shown_movie = 0
+
+    update_current_popular(call.from_user.id, current_page, last_shown_movie)
+
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+
+    if content_type == 'movie':
+        media_api = tmdb.Movies()
+        response = media_api.popular(language=tmdb_language_code, page=current_page)
+    elif content_type == 'tv':
+        media_api = tmdb.TV()
+        response = media_api.popular(language=tmdb_language_code, page=current_page)
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    genres = get_genres(tmdb_language_code)
+
+    message_text = ""
+    last_shown_movie = current_movie
+
+    index = 1
+    for content in response['results'][last_shown_movie - 18:last_shown_movie]:
+        content_details = await send_content_details(index, content, content_type, genres, language_code)
+        message_text += content_details + "\n\n"
+        index += 1
+
+    if not message_text:
+        message_text = "No more movies to show."
+
+    await bot.send_message(call.message.chat.id, text=message_text, parse_mode='HTML')
+    await create_keyboard_with_next_button(call.from_user.id, language_code, content_type)
