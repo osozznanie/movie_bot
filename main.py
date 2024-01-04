@@ -456,12 +456,21 @@ import re
 
 @dp.message()
 async def cmd_film(message: types.Message):
-    match = re.match(r'^/film(\d+)$', message.text)
     if message.text.startswith('/film'):
+        match = re.match(r'^/film(\d+)$', message.text)
+
         if match:
             film_id = match.group(1)
 
-            await send_content_details_by_film_id(film_id, 'movie', message)
+            await send_content_details_by_content_id(film_id, 'movie', message)
+        else:
+            await message.answer("Please include a film ID.")
+    if message.text.startswith('/tv'):
+        match = re.match(r'^/tv(\d+)$', message.text)
+        if match:
+            film_id = match.group(1)
+
+            await send_content_details_by_content_id(film_id, 'tv', message)
         else:
             await message.answer("Please include a film ID.")
     else:
