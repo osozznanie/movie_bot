@@ -94,17 +94,48 @@ async def set_menu_callback(query: types.CallbackQuery):
         await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard_markup)
     elif menu_code == '3':
-        await send_random_content(query, language_code, tmdb_language_code)
+        keyboard = create_content_choice_keyboard(language_code)
+        await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
+                                    reply_markup=keyboard)
+        # await send_random_content(query, language_code, tmdb_language_code)
     elif menu_code == '4':
         await send_option_message(query, language_code, select_option_text)
+
+
+@dp.callback_query(lambda query: query.data.startswith('choose_content_'))
+async def set_content_choice_callback(query: types.CallbackQuery):
+    language_code = get_user_language_from_db(query.from_user.id)
+    content_type = query.data.split('_')[2]
+    select_option_text = get_text(language_code, 'select_option')
+
+    keyboard = create_rating_choice_keyboard(language_code, content_type)
+    await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
+                                reply_markup=keyboard)
+
+
+@dp.callback_query(lambda query: query.data.startswith('choose_rating_'))
+async def set_rating_choice_callback(query: types.CallbackQuery):
+    language_code = get_user_language_from_db(query.from_user.id)
+    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    content_type = query.data.split('_')[2]
+    rating_range = query.data.split('_')[3]
+
+
+    rating_min, rating_max = map(float, rating_range.split('-'))
+    print_info(f"User {query.from_user.id} chose rating range {rating_min}-{rating_max} = set_rating_choice_callback")
+
+    await send_random_content(query, language_code, tmdb_language_code, content_type, (rating_min, rating_max))
 
 
 @dp.callback_query(lambda query: query.data.startswith('another_'))
 async def show_another_random_movie(query: types.CallbackQuery):
     language_code = get_user_language_from_db(query.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
+    content_type = query.data.split('_')[1]
+    rating_range = query.data.split('_')[2]
 
-    await send_random_content(query, language_code, tmdb_language_code)
+    rating_min, rating_max = map(float, rating_range.strip('()').split(', '))
+    await send_random_content(query, language_code, tmdb_language_code, content_type, (rating_min, rating_max))
 
 
 @dp.callback_query(lambda query: query.data.startswith('submenu_option_'))
@@ -405,6 +436,7 @@ async def delete_callback(query: types.CallbackQuery):
 
     await bot.delete_message(chat_id=query.message.chat.id, message_id=query.message.message_id)
 
+
 # ========================================= Back =========================================  #
 @dp.callback_query(lambda query: query.data.startswith('back'))
 async def set_back_callback(query: types.CallbackQuery):
@@ -465,7 +497,7 @@ async def cmd_film(message: types.Message):
             await send_content_details_by_content_id(film_id, 'movie', message)
         else:
             await message.answer("Please include a film ID.")
-    if message.text.startswith('/tv'):
+    elif message.text.startswith('/tv'):
         match = re.match(r'^/tv(\d+)$', message.text)
         if match:
             film_id = match.group(1)

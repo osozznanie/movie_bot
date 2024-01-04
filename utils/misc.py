@@ -324,7 +324,7 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
     message_text = ""
     index = 1
     for content in response['results'][current_movie:current_movie + 10]:
-        content_details = await send_content_details(content, content_type, genres, language_code, callback_query)
+        content_details = await send_content_details(index, content, content_type, genres, language_code)
         message_text += content_details + "\n\n"
         index += 1
 
@@ -580,14 +580,12 @@ async def send_content_details_by_content_id(content_id, content_type, call):
                          parse_mode='HTML')
 
 
-async def send_random_content(query, language_code, tmdb_language_code):
-    content_type = random.choice(['movie', 'tv'])
-
+async def send_random_content(query, language_code, tmdb_language_code, content_type, rating):
     if content_type == 'movie':
-        random_content = await get_next_movie(query.from_user.id)
+        random_content = await get_next_movie(query.from_user.id, rating)
         content = tmdb.Movies(random_content['id'])
     else:  # content_type == 'tv'
-        random_content = await get_next_tv_show(query.from_user.id)
+        random_content = await get_next_tv_show(query.from_user.id, rating)
         content = tmdb.TV(random_content['id'])
 
     content_info = content.info(language=tmdb_language_code)
@@ -595,17 +593,18 @@ async def send_random_content(query, language_code, tmdb_language_code):
     title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
         content_info, content_type)
 
-    message_text = get_message_text_for_card_from_TMDB(language_code, title, original_title, vote_average, genre_names,
-                                                       release_year, runtime, overview, content_type, adult,
-                                                       additional_info, random_content['id'])
+    message_text = get_message_text_for_card_by_film_id(language_code, title, original_title, vote_average, genre_names,
+                                                        release_year, runtime, overview, content_type, adult,
+                                                        additional_info, random_content['id'])
 
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
 
     keyboard = create_keyboard(random_content["id"], language_code, 'save', check_type(content_type))
-    another_button = create_keyboard(random_content["id"], language_code, 'another', check_type(content_type))
+    another_button = InlineKeyboardButton(text=get_text(language_code, 'another'),
+                                          callback_data=f'another_{content_type}_{rating}')
 
-    keyboard.inline_keyboard.append(another_button.inline_keyboard[0])
+    keyboard.inline_keyboard.append([another_button])
 
     if query.message:
         await bot.delete_message(chat_id=query.from_user.id, message_id=query.message.message_id)
@@ -617,37 +616,36 @@ async def send_random_content(query, language_code, tmdb_language_code):
     await query.answer(show_alert=False)
 
 
-selected_movies = set()
-selected_tv_shows = set()
-
-
-async def get_next_movie(user_id):
-    all_movies = await fetch_random_movies(user_id)
-    while True:
-        movie = random.choice(all_movies)
-        if movie['id'] not in selected_movies:
-            selected_movies.add(movie['id'])
-            movie_counters[user_id] = movie_counters.get(user_id, 0) + 1
-            return movie
-
-
+selected_movies = {}
+selected_tv_shows = {}
 movie_counters = {}
 tv_counters = {}
 
 
-async def get_next_tv_show(user_id):
-    all_tv_shows = await fetch_random_tv_shows(user_id)
+async def get_next_movie(user_id, rating):
+    all_movies = await fetch_random_movies(user_id, rating)
+    while True:
+        movie = random.choice(all_movies)
+        if movie['id'] not in selected_movies.get(user_id, set()):
+            selected_movies.setdefault(user_id, set()).add(movie['id'])
+            movie_counters[user_id] = movie_counters.get(user_id, 0) + 1
+            return movie
+
+
+async def get_next_tv_show(user_id, rating):
+    all_tv_shows = await fetch_random_tv_shows(user_id, rating)
     while True:
         tv_show = random.choice(all_tv_shows)
-        if tv_show['id'] not in selected_tv_shows:
-            selected_tv_shows.add(tv_show['id'])
+        if tv_show['id'] not in selected_tv_shows.get(user_id, set()):
+            selected_tv_shows.setdefault(user_id, set()).add(tv_show['id'])
             tv_counters[user_id] = tv_counters.get(user_id, 0) + 1
             return tv_show
 
 
-async def fetch_random_movies(user_id):
+async def fetch_random_movies(user_id, rating):
     current_page = await get_current_page_random(user_id, 'current_random_movie_page')
     all_movies = tmdb.Discover().movie(page=current_page, vote_count_gte=300)['results']
+    all_movies = [movie for movie in all_movies if rating[0] <= movie['vote_average'] <= rating[1]]
     random.shuffle(all_movies)
     if movie_counters.get(user_id, 0) >= 5:
         await update_current_page_random(user_id, 'current_random_movie_page')
@@ -655,9 +653,10 @@ async def fetch_random_movies(user_id):
     return all_movies
 
 
-async def fetch_random_tv_shows(user_id):
+async def fetch_random_tv_shows(user_id, rating):
     current_page = await get_current_page_random(user_id, 'current_random_tv_page')
     all_tv_shows = tmdb.Discover().tv(page=current_page, vote_count_gte=300)['results']
+    all_tv_shows = [tv_show for tv_show in all_tv_shows if rating[0] <= tv_show['vote_average'] <= rating[1]]
     random.shuffle(all_tv_shows)
     if tv_counters.get(user_id, 0) >= 5:
         await update_current_page_random(user_id, 'current_random_tv_page')
@@ -780,3 +779,23 @@ async def send_previous_media(call, language_code, content_type):
 
     await bot.send_message(call.message.chat.id, text=message_text, parse_mode='HTML')
     await create_keyboard_with_next_button(call.from_user.id, language_code, content_type)
+
+
+def create_content_choice_keyboard(language_code):
+    film_text = get_text(language_code, 'movies')
+    series_text = get_text(language_code, 'series')
+    film_button = InlineKeyboardButton(text=film_text, callback_data=f'choose_content_movie')
+    series_button = InlineKeyboardButton(text=series_text, callback_data=f'choose_content_tv')
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[film_button, series_button]])
+
+    return keyboard
+
+
+def create_rating_choice_keyboard(language_code, content_type):
+    low = get_text(language_code, 'any_rating')
+    height = get_text(language_code, 'good_rating')
+    low_button = InlineKeyboardButton(text=low, callback_data=f'choose_rating_{content_type}_0-10')
+    height_button = InlineKeyboardButton(text=height, callback_data=f'choose_rating_{content_type}_6-10')
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[low_button], [height_button]])
+
+    return keyboard
