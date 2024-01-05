@@ -101,7 +101,7 @@ async def send_content_details(index, content, content_type, genres, language_co
         index = 1
     title = content['title'] if 'title' in content and content_type == 'movie' else content[
         'name'] if 'name' in content else 'N/A'
-    vote_average = content['vote_average']
+    vote_average = content['vote_average'] if 'vote_average' in content else 'N/A'
     genre_names = [genres[genre_id] for genre_id in content['genre_ids'] if genre_id in genres]
     if not genre_names:
         genre_names = ['N/A']
@@ -264,6 +264,9 @@ def generate_release_date_submenu(language_code, content_type):
 def search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, language_code, page=1):
     discover = tmdb.Discover()
 
+    if min_votes is None:
+        min_votes = 400
+
     response = discover.movie(with_genres=genre_filter, primary_release_date_gte=start_date,
                               primary_release_date_lte=end_date,
                               vote_count_lte=max_votes, vote_count_gte=min_votes, sort_by=rating,
@@ -277,6 +280,9 @@ def search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rati
 def search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating, language_code, page=1):
     discover = tmdb.Discover()
 
+    if min_votes is None:
+        min_votes = 400
+
     response = discover.tv(with_genres=genre_filter, first_air_date_gte=start_date,
                            first_air_date_lte=end_date,
                            vote_count_lte=max_votes, vote_count_gte=min_votes, sort_by=rating,
@@ -287,25 +293,15 @@ def search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, ra
     return results
 
 
-def get_genre_names(genre_ids, language_code):
-    genres_api = Genres()
-    all_genres = genres_api.movie_list(language=language_code)['genres']
-
-    id_to_name = {genre['id']: genre['name'] for genre in all_genres}
-
-    genre_names = [id_to_name[genre_id] for genre_id in genre_ids if genre_id in id_to_name]
-
-    return genre_names
-
-
 global message_ids
 message_ids = []
 
 
 async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_order, vote_count, content_type):
-    current_page, current_movie = get_current_popular_by_user_id(callback_query.from_user.id)
+    user_id = callback_query.from_user.id
+    current_page, current_movie = get_current_popular_by_user_id(user_id)
 
-    language_code = get_user_language_from_db(callback_query.from_user.id)
+    language_code = get_user_language_from_db(user_id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
     if content_type == 'movie':
@@ -333,19 +329,25 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
         current_page += 1
         current_movie = 0
 
-    update_current_popular(callback_query.from_user.id, current_page, current_movie)
+    update_current_popular(user_id, current_page, current_movie)
 
-    await bot.send_message(callback_query.message.chat.id, text=message_text, parse_mode='HTML')
+    await bot.send_message(user_id, text=message_text, parse_mode='HTML')
 
-    await create_keyboard_with_next_button(callback_query.from_user.id, language_code, content_type)
+    await create_keyboard_with_next_button(user_id, language_code, content_type)
 
 
-def get_genres(language_code):
+def get_genres(language_code, content_type='movie'):
     genres_api = tmdb.Genres()
-    genres_response = genres_api.movie_list(language=language_code)
+
+    if content_type == 'movie':
+        genres_response = genres_api.movie_list(language=language_code)
+    elif content_type == 'tv':
+        genres_response = genres_api.tv_list(language=language_code)
+    else:
+        raise ValueError(f"Invalid content_type: {content_type}")
+
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
     return genres
-
 
 def get_rating_mod(submenu_code_2, language_code, text_key_low='starting_low', text_key_high='starting_high',
                    text_key_option='select_option'):
@@ -694,9 +696,7 @@ async def send_next_page_filter(call, language_code, content_type):
         max_votes = None
 
     current_page, current_movie = get_filter_movie_page_movie_by_user_id(user_id)
-    print_info(f'Current movie: {current_movie}, current page: {current_page}')
 
-    # Get the movies or TV shows
     if content_type == 'movie':
         current_page, current_movie = get_filter_movie_page_movie_by_user_id(user_id)
         contents = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating, tmdb_language_code,
@@ -711,30 +711,28 @@ async def send_next_page_filter(call, language_code, content_type):
         msg = await bot.send_message(user_id, get_text(language_code, 'no_results'))
         await delete_message_after_delay(5, user_id, msg.message_id)
         return
-    for _ in range(5):
-        if not contents or current_movie >= len(contents):
-            current_movie = 0
-            current_page += 1
-            if content_type == 'movie':
-                contents = search_movies(genre_filter, start_date, end_date, min_votes, max_votes, rating,
-                                         tmdb_language_code,
-                                         current_page)
-            else:  # content_type == 'tv'
-                contents = search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, rating,
-                                           tmdb_language_code, current_page)
 
-        if contents:
-            content = contents[current_movie]
-            genres = get_genres(tmdb_language_code)
-            await send_content_details(content, content_type, genres, language_code, call)
-            current_movie += 1
+    genres = get_genres(tmdb_language_code, content_type=content_type)
+    print_info(genres)
+
+    message_text = ""
+    index = 1
+    for content in contents[current_movie:current_movie + 10]:
+        content_details = await send_content_details(index, content, content_type, genres, language_code)
+        message_text += content_details + "\n\n"
+        index += 1
+
+    current_movie += 10
+    if current_movie >= len(contents):
+        current_page += 1
+        current_movie = 0
 
     if content_type == 'movie':
         set_filter_movie_page_movie_by_user_id(user_id, current_page, current_movie)
     elif content_type == 'tv':
         set_filter_series_page_movie_by_user_id(user_id, current_page, current_movie)
+    await bot.send_message(user_id, text=message_text, parse_mode='HTML')
     await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}')
-
 
 async def send_previous_media(call, language_code, content_type):
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
@@ -799,3 +797,79 @@ def create_rating_choice_keyboard(language_code, content_type):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[low_button], [height_button]])
 
     return keyboard
+
+
+def get_movie_genres(language_code):
+    genres = tmdb.Genres()
+    response = genres.movie_list(language=language_code)
+    return response.get('genres', {})
+
+
+def get_tv_genres(language_code):
+    genres = tmdb.Genres()
+    response = genres.tv_list(language=language_code)
+    return response.get('genres', {})
+
+
+def get_user_filters(user_id, content_type):
+    language_code = get_user_language_from_db(user_id)
+    if content_type == 'movie':
+        filters = get_filters_movie_from_db(user_id)
+        genres = get_movie_genres(get_text(language_code, 'LANGUAGE_CODES'))
+    elif content_type == 'tv':
+        filters = get_filters_series_from_db(user_id)
+        genres = get_tv_genres(get_text(language_code, 'LANGUAGE_CODES'))
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    # Convert list of genres to dictionary for easy lookup
+    genres_dict = {genre['id']: genre['name'] for genre in genres}
+
+    year = get_text(language_code, 'year')
+    not_indicated = get_text(language_code, 'not_indicated')
+    filter_descriptions = []
+
+    rating_text_map = {
+        'popularity.desc': get_text(language_code, 'popularity_desc'),
+        'popularity.asc': get_text(language_code, 'popularity_asc'),
+    }
+
+    filter_keys = ['genre', 'release_date', 'user_rating', 'rating']
+
+    for filter_key in filter_keys:
+        filter_value = filters.get(filter_key)
+        if filter_key == 'genre':
+            genre_name = genres_dict.get(int(filter_value), filter_value) if filter_value else not_indicated
+            filter_descriptions.append(f"{get_text(language_code, 'genre')}: {genre_name}")
+        elif filter_key == 'release_date':
+            date_text = f"{filter_value.split('-')[0]}{year}  - {filter_value.split('-')[1]}{year}" if filter_value else not_indicated
+            filter_descriptions.append(f"{get_text(language_code, 'release_date')}: {date_text}")
+        elif filter_key == 'user_rating':
+            rating_text = filter_value if filter_value and filter_value != '100-10000000' else not_indicated
+            filter_descriptions.append(f"{get_text(language_code, 'user_rating')}: {rating_text}")
+        elif filter_key == 'rating':
+            rating_text = rating_text_map.get(filter_value, filter_value) if filter_value else not_indicated
+            filter_descriptions.append(f"{get_text(language_code, 'sort_by_rating')}: {rating_text}")
+
+    filter_text = "\n".join(filter_descriptions)
+
+    return filter_text
+
+
+def check_filters_exist(user_id, content_type):
+    if content_type == 'movie':
+        filters = get_filters_movie_from_db(user_id)
+    elif content_type == 'tv':
+        filters = get_filters_series_from_db(user_id)
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    genre = filters.get('genre')
+    release_date = filters.get('release_date')
+    user_rating = filters.get('user_rating')
+    rating = filters.get('rating')
+
+    if genre or release_date or user_rating or rating:
+        return True
+    else:
+        return False

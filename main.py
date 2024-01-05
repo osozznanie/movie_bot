@@ -120,7 +120,6 @@ async def set_rating_choice_callback(query: types.CallbackQuery):
     content_type = query.data.split('_')[2]
     rating_range = query.data.split('_')[3]
 
-
     rating_min, rating_max = map(float, rating_range.split('-'))
     print_info(f"User {query.from_user.id} chose rating range {rating_min}-{rating_max} = set_rating_choice_callback")
 
@@ -388,6 +387,15 @@ async def process_search(call: types.CallbackQuery):
     user_id = call.from_user.id
     language_code = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[2]
+
+    set_filter_pages_and_movies_by_user_id(user_id, 1, 1, 0, 0)
+
+    if check_filters_exist(user_id, content_type):
+        msg_text = get_text(language_code, 'selected_filters') + "\n" + get_user_filters(user_id, content_type)
+        await bot.edit_message_text(text=msg_text, chat_id=call.from_user.id, message_id=call.message.message_id,
+                                    parse_mode=ParseMode.HTML)
+
+    print_info(check_filters_exist(user_id,content_type))
 
     await send_next_page_filter(call, language_code, content_type)
     await call.answer(show_alert=False)
