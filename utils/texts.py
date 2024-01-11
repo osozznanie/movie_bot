@@ -88,6 +88,7 @@ TEXTS = {
         'popularity_desc': 'by descending',
         'popularity_asc': 'by ascending',
         'first_page': 'You are on the first page. Click "Next" to download the next 10 movies.',
+        'save_yet': 'Saved',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -178,6 +179,7 @@ TEXTS = {
         'popularity_desc': 'за спаданням',
         'popularity_asc': 'за зростанням',
         'first_page': 'Ви на першій сторінці. Натисніть "Далі", щоб завантажити наступні 10 фільмів.',
+        'save_yet': 'Збережено',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -268,5 +270,6 @@ TEXTS = {
         'popularity_desc': 'за убыванием',
         'popularity_asc': 'за возрастанием',
         'first_page': 'Вы на первой странице. Нажмите "Далее", чтобы загрузить следующие 10 фильмов.',
+        'save_yet': 'Сохранено',
     },
 }

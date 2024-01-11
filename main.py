@@ -44,7 +44,6 @@ async def cmd_start(message: types.Message):
 # ========================================= Language =========================================  #
 user_languages = {}
 
-
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
@@ -234,6 +233,7 @@ async def process_callback_save(callback_query: types.CallbackQuery):
     movie_id = callback_query.data.split('_')[1]
     content_type = callback_query.data.split('_')[2]
     user_id = callback_query.from_user.id
+    language_code = get_user_language_from_db(user_id)
 
     if content_type == 'movie':
         save_movie_to_db(user_id, movie_id)
@@ -241,7 +241,7 @@ async def process_callback_save(callback_query: types.CallbackQuery):
         save_series_to_db(user_id, movie_id)
 
     save_text = get_text(get_user_language_from_db(user_id), 'save')
-    await bot.answer_callback_query(callback_query.id, save_text)
+    await callback_query.answer(get_text(language_code, 'save_yet'), show_alert=True)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))

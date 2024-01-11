@@ -762,7 +762,7 @@ async def send_previous_page_filter(call, language_code, content_type):
     elif content_type == 'tv':
         current_page, current_movie = get_filter_series_page_movie_by_user_id(call.from_user.id)
 
-    if current_page == 1 and current_movie == 10:
+    if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
         msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))
         await delete_message_after_delay(5, msg_text.message_id, call.message.message_id)
         return
@@ -780,9 +780,8 @@ async def send_previous_page_filter(call, language_code, content_type):
 async def handle_previous_media(call, language_code, content_type, sort_order=None, vote_count=None):
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
 
-    if current_page == 1 and current_movie == 10:
-        msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))
-        await delete_message_after_delay(5, msg_text.message_id, call.message.message_id)
+    if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
+        await call.answer(get_text(language_code, 'first_page'), show_alert=True)
         return
     elif current_movie == 0:
         current_page -= 1
