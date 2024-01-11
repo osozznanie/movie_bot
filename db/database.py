@@ -23,8 +23,23 @@ def create_users_table():
                        "username VARCHAR(32) NOT NULL, "
                        "language VARCHAR(5), "
                        "reg_date DATE, "
-                       "update_date DATE);")
+                       "update_date DATE, "
+                       "message_id INTEGER);")
         print("Table 'users' created successfully")
+
+
+def store_message_id_in_db(user_id, message_id):
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE users SET message_id = %s WHERE user_id = %s", (message_id, user_id))
+        connection.commit()
+        print(f"Message ID {message_id} stored for user {user_id}")
+
+
+def get_message_id_from_db(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT message_id FROM users WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
 
 
 def create_user_pages_table():
@@ -32,7 +47,7 @@ def create_user_pages_table():
         cursor.execute("CREATE TABLE IF NOT EXISTS user_pages ("
                        "user_id INT PRIMARY KEY, "
                        "current_popular_page INT DEFAULT 1, "
-                       "current_popular_movie INT DEFAULT 9, "
+                       "current_popular_movie INT DEFAULT 0, "
                        "current_rating_page INT DEFAULT 1, "
                        "current_rating_movie INT DEFAULT 0,"
                        "current_random_movie_page INT DEFAULT 1,"
@@ -258,6 +273,7 @@ def get_filter_movie_page_movie_by_user_id(user_id):
             "SELECT current_filter_movie_page, current_filter_movie_movie "
             "FROM user_pages WHERE user_id = %s", (user_id,))
         result = cursor.fetchone()
+        print(result)
         return result
 
 

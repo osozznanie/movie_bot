@@ -12,7 +12,8 @@ from db.database import get_user_language_from_db, get_current_popular_by_user_i
     get_filters_series_from_db, \
     set_filter_movie_page_movie_by_user_id, \
     get_filter_movie_page_movie_by_user_id, get_filter_series_page_movie_by_user_id, \
-    set_filter_series_page_movie_by_user_id, reset_filters_movie, reset_filters_series
+    set_filter_series_page_movie_by_user_id, reset_filters_movie, reset_filters_series, get_message_id_from_db, \
+    store_message_id_in_db
 from main import bot, user_languages
 from utils.texts import TEXTS
 
@@ -38,7 +39,8 @@ def check_type(content_type):
 
 
 async def send_next_media(callback_query: types.CallbackQuery, language_code, content_type):
-    current_page, current_movie = get_current_popular_by_user_id(callback_query.from_user.id)
+    user_id = callback_query.from_user.id
+    current_page, current_movie = get_current_popular_by_user_id(user_id)
 
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
@@ -65,24 +67,36 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
         current_page += 1
         current_movie = 0
 
-    update_current_popular(callback_query.from_user.id, current_page, current_movie)
+    update_current_popular(user_id, current_page, current_movie)
 
-    await bot.send_message(callback_query.message.chat.id, text=message_text, parse_mode='HTML')
+    message_id = get_message_id_from_db(user_id)
+    if message_id is None or message_id == 0:
+        sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
+        store_message_id_in_db(user_id, sent_message.message_id)
+        await create_keyboard_with_next_button(user_id, language_code, content_type)
+    else:
+        await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
 
-    await create_keyboard_with_next_button(callback_query.from_user.id, language_code, content_type)
 
-
-async def create_keyboard_with_next_button(user_id, language_code, content_type, call_for_next=None):
+async def create_keyboard_with_next_button(user_id, language_code, content_type, call_for_next=None,
+                                           call_for_back=None):
     if call_for_next is None:
-        call_for_next = f'load_next_{content_type}_popular'
+        call_for_next = f'load_next_popular_{content_type}'
+
+    if call_for_back is None:
+        call_for_back = f'load_previous_popular_{content_type}'
+
+    print_info(f"create_keyboard_with_next_button: {call_for_next}, {call_for_back}")
 
     next_button_text = get_text(language_code, 'next')
     back_button_text = get_text(language_code, 'back')
     reset_button_text = get_text(language_code, 'reset')
 
+    print_info(f"create_keyboard_with_next_button: {call_for_next}, {call_for_back}")
+
     buttons = [
         [
-            types.InlineKeyboardButton(text=back_button_text, callback_data=f'load_previous_{content_type}'),
+            types.InlineKeyboardButton(text=back_button_text, callback_data=call_for_back),
             types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
         ],
         [
@@ -297,7 +311,7 @@ global message_ids
 message_ids = []
 
 
-async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_order, vote_count, content_type):
+async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_order, vote_count, content_type):
     user_id = callback_query.from_user.id
     current_page, current_movie = get_current_popular_by_user_id(user_id)
 
@@ -331,9 +345,16 @@ async def send_movies_by_rating_TMDB(callback_query: types.CallbackQuery, sort_o
 
     update_current_popular(user_id, current_page, current_movie)
 
-    await bot.send_message(user_id, text=message_text, parse_mode='HTML')
+    message_id = get_message_id_from_db(user_id)
+    if message_id is None or message_id == 0:
+        sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
+        store_message_id_in_db(user_id, sent_message.message_id)
+    else:
+        await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
 
-    await create_keyboard_with_next_button(user_id, language_code, content_type)
+    await create_keyboard_with_next_button(user_id, language_code, content_type,
+                                           f'next_page_rating_{sort_order}_{content_type}',
+                                           f'previous_page_rating_{sort_order}_{content_type}')
 
 
 def get_genres(language_code, content_type='movie'):
@@ -348,6 +369,7 @@ def get_genres(language_code, content_type='movie'):
 
     genres = {genre['id']: genre['name'] for genre in genres_response['genres']}
     return genres
+
 
 def get_rating_mod(submenu_code_2, language_code, text_key_low='starting_low', text_key_high='starting_high',
                    text_key_option='select_option'):
@@ -555,7 +577,7 @@ def extract_content_info(content_info, content_type):
     return title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info
 
 
-async def send_content_details_by_content_id(content_id, content_type, call):
+async def send_content_details_by_content_id(content_id, content_type, call, save=False):
     language_code = get_user_language_from_db(call.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
 
@@ -576,6 +598,9 @@ async def send_content_details_by_content_id(content_id, content_type, call):
         message_text = message_text[:1021] + '...'
 
     keyboard = create_keyboard(content_id, language_code, 'save', check_type(content_type))
+    if save:
+        keyboard.inline_keyboard.append(
+            [InlineKeyboardButton(text=get_text(language_code, 'delete'), callback_data=f'delete_{content_id}')])
 
     await bot.send_photo(chat_id=call.from_user.id, photo=URLInputFile(poster_url), caption=message_text,
                          reply_markup=keyboard,
@@ -731,52 +756,67 @@ async def send_next_page_filter(call, language_code, content_type):
         set_filter_movie_page_movie_by_user_id(user_id, current_page, current_movie)
     elif content_type == 'tv':
         set_filter_series_page_movie_by_user_id(user_id, current_page, current_movie)
-    await bot.send_message(user_id, text=message_text, parse_mode='HTML')
-    await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}')
 
-async def send_previous_media(call, language_code, content_type):
+    message_id = get_message_id_from_db(user_id)
+    if not message_id or message_id == 0:
+        sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
+        store_message_id_in_db(user_id, sent_message.message_id)
+        await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}', f'previous_page_filter_{content_type}')
+    else:
+        await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
+
+
+async def send_previous_page_filter(call, language_code, content_type):
+    if content_type == 'movie':
+        current_page, current_movie = get_filter_movie_page_movie_by_user_id(call.from_user.id)
+    elif content_type == 'tv':
+        current_page, current_movie = get_filter_series_page_movie_by_user_id(call.from_user.id)
+
+    print_info(current_page)
+    print_info(current_movie)
+
+    if current_page == 1 and current_movie == 10:
+        msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))
+        await delete_message_after_delay(5, msg_text.message_id, call.message.message_id)
+        return
+    elif current_movie == 0:
+        current_page -= 1
+        current_movie = 0
+    elif current_movie == 10:
+        current_page -= 1
+        current_movie = 10
+
+    set_filter_movie_page_movie_by_user_id(call.from_user.id, current_page, current_movie)
+    await send_next_page_filter(call, language_code, content_type)
+
+
+async def handle_previous_media(call, language_code, content_type, sort_order=None, vote_count=None):
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
 
-    last_shown_movie = current_movie
+    if current_page == 1 and current_movie == 10:
+        msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))
+        await delete_message_after_delay(5, msg_text.message_id, call.message.message_id)
+        return
+    elif current_movie == 0:
+        current_page -= 1
+        current_movie = 0
+    elif current_movie == 10:
+        current_page -= 1
+        current_movie = 10
+    update_current_popular(call.from_user.id, current_page, current_movie)
 
-    last_shown_movie -= 9
-    if last_shown_movie < 0:
-        if current_page == 1 or last_shown_movie == 9:
-            current_page = 1
-            last_shown_movie = 9
-        else:
-            current_page -= 1
-            last_shown_movie = 0
-
-    update_current_popular(call.from_user.id, current_page, last_shown_movie)
-
-    tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
-
-    if content_type == 'movie':
-        media_api = tmdb.Movies()
-        response = media_api.popular(language=tmdb_language_code, page=current_page)
-    elif content_type == 'tv':
-        media_api = tmdb.TV()
-        response = media_api.popular(language=tmdb_language_code, page=current_page)
+    if sort_order is None:
+        await send_next_media(call, language_code, content_type)
     else:
-        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+        await send_next_media_by_rating(call, sort_order=sort_order, vote_count=vote_count, content_type=content_type)
 
-    genres = get_genres(tmdb_language_code)
 
-    message_text = ""
-    last_shown_movie = current_movie
+async def send_previous_media_by_popularity(call, language_code, content_type):
+    await handle_previous_media(call, language_code, content_type)
 
-    index = 1
-    for content in response['results'][last_shown_movie - 18:last_shown_movie]:
-        content_details = await send_content_details(index, content, content_type, genres, language_code)
-        message_text += content_details + "\n\n"
-        index += 1
 
-    if not message_text:
-        message_text = "No more movies to show."
-
-    await bot.send_message(call.message.chat.id, text=message_text, parse_mode='HTML')
-    await create_keyboard_with_next_button(call.from_user.id, language_code, content_type)
+async def send_previous_movies_by_rating_TMDB(call, language_code, sort_order, vote_count, content_type):
+    await handle_previous_media(call, language_code, content_type, sort_order, vote_count)
 
 
 def create_content_choice_keyboard(language_code):

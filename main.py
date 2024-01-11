@@ -97,7 +97,6 @@ async def set_menu_callback(query: types.CallbackQuery):
         keyboard = create_content_choice_keyboard(language_code)
         await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                     reply_markup=keyboard)
-        # await send_random_content(query, language_code, tmdb_language_code)
     elif menu_code == '4':
         await send_option_message(query, language_code, select_option_text)
 
@@ -160,28 +159,36 @@ async def set_submenu_callback(call):
         message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
         await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     reply_markup=keyboard_markup)
+        await call.answer(show_alert=False)
 
 
-@dp.callback_query(lambda query: query.data.startswith('load_next_'))
+@dp.callback_query(lambda query: query.data.startswith('load_next_popular_'))
 async def load_next_movies_callback(call):
-    content_type = call.data.split('_')[2]
+    content_type = call.data.split('_')[3]
 
     language_code = get_user_language_from_db(call.from_user.id)
+
     if content_type == 'movie':
         await send_next_media(call, language_code, 'movie')
     elif content_type == 'tv':
         await send_next_media(call, language_code, 'tv')
+    else:
+        await bot.answer_callback_query(call.id, "Something went wrong")
+
+    await call.answer(show_alert=False)
 
 
-@dp.callback_query(lambda query: query.data.startswith('load_previous_'))
+@dp.callback_query(lambda query: query.data.startswith('load_previous_popular_'))
 async def load_previous_movies_callback(call):
-    content_type = call.data.split('_')[2]
+    content_type = call.data.split('_')[3]
 
     language_code = get_user_language_from_db(call.from_user.id)
     if content_type == 'movie':
-        await send_previous_media(call, language_code, 'movie')
+        await send_previous_media_by_popularity(call, language_code, 'movie')
+        print_info(call.data)
     elif content_type == 'tv':
-        await send_previous_media(call, language_code, 'tv')
+        await send_previous_media_by_popularity(call, language_code, 'tv')
+    await call.answer(show_alert=False)
 
 
 @dp.callback_query(lambda query: query.data.startswith('reset_page'))
@@ -198,8 +205,6 @@ async def reset_page_filter_callback(call):
 
 @dp.callback_query(lambda query: query.data.startswith('next_page_filter'))
 async def next_page_filter_callback(call):
-    await call.answer(show_alert=False)
-
     user_id = call.from_user.id
     language_code = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[3]
@@ -208,6 +213,22 @@ async def next_page_filter_callback(call):
         await send_next_page_filter(call, language_code, 'movie')
     elif content_type == 'tv':
         await send_next_page_filter(call, language_code, 'tv')
+
+    await call.answer(show_alert=False)
+
+
+@dp.callback_query(lambda query: query.data.startswith('previous_page_filter'))
+async def previous_page_filter_callback(call):
+    user_id = call.from_user.id
+    language_code = get_user_language_from_db(user_id)
+    content_type = call.data.split('_')[3]
+
+    if content_type == 'movie':
+        await send_previous_page_filter(call, language_code, 'movie')
+    elif content_type == 'tv':
+        await send_previous_page_filter(call, language_code, 'tv')
+
+    await call.answer(show_alert=False)
 
 
 @dp.callback_query(lambda c: c.data.startswith('save_'))
@@ -228,19 +249,25 @@ async def process_callback_save(callback_query: types.CallbackQuery):
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
 async def handle_sort_option_low(callback_query: types.CallbackQuery):
     submenu_code = callback_query.data.split('_')[3]
+
     if submenu_code == '1':
-        await send_movies_by_rating_TMDB(callback_query, 'asc', 1000, 'movie')
+        await send_next_media_by_rating(callback_query, 'asc', 1000, 'movie')
     elif submenu_code == '2':
-        await send_movies_by_rating_TMDB(callback_query, 'asc', 500, 'tv')
+        await send_next_media_by_rating(callback_query, 'asc', 500, 'tv')
+
+    await callback_query.answer(show_alert=False)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_high_'))
 async def handle_sort_option_high(callback_query: types.CallbackQuery):
     submenu_code = callback_query.data.split('_')[3]
+
     if submenu_code == '1':
-        await send_movies_by_rating_TMDB(callback_query, 'desc', 1000, 'movie')
+        await send_next_media_by_rating(callback_query, 'desc', 1000, 'movie')
     elif submenu_code == '2':
-        await send_movies_by_rating_TMDB(callback_query, 'desc', 500, 'tv')
+        await send_next_media_by_rating(callback_query, 'desc', 500, 'tv')
+
+    await callback_query.answer(show_alert=False)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('next_page_rating_'))
@@ -249,15 +276,38 @@ async def handle_next_page_rating(callback_query: types.CallbackQuery):
     content_type = callback_query.data.split('_')[4]
 
     if content_type == 'movie':
-        await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000, content_type='movie')
+        await send_next_media_by_rating(callback_query, sort_order=sort_order, vote_count=1000, content_type='movie')
     elif content_type == 'tv':
-        await send_movies_by_rating_TMDB(callback_query, sort_order=sort_order, vote_count=1000, content_type='tv')
+        await send_next_media_by_rating(callback_query, sort_order=sort_order, vote_count=1000, content_type='tv')
 
     while len(message_ids) > 5:
         message_id = message_ids.pop(0)
         await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
 
     await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
+    await callback_query.answer(show_alert=False)
+
+
+@dp.callback_query(lambda c: c.data and c.data.startswith('previous_page_rating_'))
+async def handle_previous_page_rating(callback_query: types.CallbackQuery):
+    sort_order = callback_query.data.split('_')[3]
+    content_type = callback_query.data.split('_')[4]
+    user_language = get_user_language_from_db(callback_query.from_user.id)
+    if content_type == 'movie':
+        await send_previous_movies_by_rating_TMDB(callback_query,
+                                                  language_code=user_language, sort_order=sort_order, vote_count=1000,
+                                                  content_type='movie')
+    elif content_type == 'tv':
+        await send_previous_movies_by_rating_TMDB(callback_query,
+                                                  language_code=user_language, sort_order=sort_order, vote_count=1000,
+                                                  content_type='tv')
+
+    while len(message_ids) > 5:
+        message_id = message_ids.pop(0)
+        await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
+
+    await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
+    await callback_query.answer(show_alert=False)
 
 
 # ========================================= Filter =========================================  #
@@ -395,7 +445,7 @@ async def process_search(call: types.CallbackQuery):
         await bot.edit_message_text(text=msg_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     parse_mode=ParseMode.HTML)
 
-    print_info(check_filters_exist(user_id,content_type))
+    print_info(check_filters_exist(user_id, content_type))
 
     await send_next_page_filter(call, language_code, content_type)
     await call.answer(show_alert=False)
@@ -406,7 +456,6 @@ async def process_search(call: types.CallbackQuery):
 async def show_saved_media(call):
     user_id = call.from_user.id
     user_language = get_user_language_from_db(user_id)
-    tmdb_language_code = get_text(user_language, 'LANGUAGE_CODES')
     content_type = call.data.split('_')[1]
 
     if content_type == 'movie':
@@ -419,17 +468,8 @@ async def show_saved_media(call):
         await delete_message_after_delay(10, call.from_user.id, not_found.message_id)
 
     for media_id in saved_media:
-        message_text, poster_path = get_media_details_and_format_message(media_id, content_type, user_language,
-                                                                         tmdb_language_code)
-        photo_url = "https://image.tmdb.org/t/p/w500" + poster_path
-
-        keyboard = create_keyboard(movie_id=media_id, content_type=content_type, language_code=user_language,
-                                   text_key='delete')
+        await send_content_details_by_content_id(media_id, content_type, call, True)
         await asyncio.sleep(0.5)
-
-        await bot.send_photo(call.message.chat.id, photo_url, caption=message_text, reply_markup=keyboard,
-                             parse_mode='HTML')
-        await bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
 
 
 # ========================================= Delete =========================================  #
@@ -473,6 +513,7 @@ async def cmd_help(message: types.Message):
 async def cmd_menu(message: types.Message):
     user_id = message.from_user.id
     language_code = get_user_language_from_db(user_id)
+    store_message_id_in_db(user_id, 0)
 
     menu_message = TEXTS[language_code]['select_menu']
 
