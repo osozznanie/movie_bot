@@ -32,7 +32,6 @@ def store_message_id_in_db(user_id, message_id):
     with connection.cursor() as cursor:
         cursor.execute("UPDATE users SET message_id = %s WHERE user_id = %s", (message_id, user_id))
         connection.commit()
-        print(f"Message ID {message_id} stored for user {user_id}")
 
 
 def get_message_id_from_db(user_id):
@@ -273,7 +272,6 @@ def get_filter_movie_page_movie_by_user_id(user_id):
             "SELECT current_filter_movie_page, current_filter_movie_movie "
             "FROM user_pages WHERE user_id = %s", (user_id,))
         result = cursor.fetchone()
-        print(result)
         return result
 
 

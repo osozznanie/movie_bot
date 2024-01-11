@@ -17,11 +17,6 @@ from db.database import get_user_language_from_db, get_current_popular_by_user_i
 from main import bot, user_languages
 from utils.texts import TEXTS
 
-
-def print_info(message):
-    print(f"[INFO] {message}")
-
-
 def create_keyboard(movie_id, language_code, text_key, content_type):
     text = get_text(language_code, text_key)
     button = InlineKeyboardButton(text=text, callback_data=f'{text_key}_{movie_id}_{content_type}')
@@ -86,13 +81,9 @@ async def create_keyboard_with_next_button(user_id, language_code, content_type,
     if call_for_back is None:
         call_for_back = f'load_previous_popular_{content_type}'
 
-    print_info(f"create_keyboard_with_next_button: {call_for_next}, {call_for_back}")
-
     next_button_text = get_text(language_code, 'next')
     back_button_text = get_text(language_code, 'back')
     reset_button_text = get_text(language_code, 'reset')
-
-    print_info(f"create_keyboard_with_next_button: {call_for_next}, {call_for_back}")
 
     buttons = [
         [
@@ -738,7 +729,6 @@ async def send_next_page_filter(call, language_code, content_type):
         return
 
     genres = get_genres(tmdb_language_code, content_type=content_type)
-    print_info(genres)
 
     message_text = ""
     index = 1
@@ -771,9 +761,6 @@ async def send_previous_page_filter(call, language_code, content_type):
         current_page, current_movie = get_filter_movie_page_movie_by_user_id(call.from_user.id)
     elif content_type == 'tv':
         current_page, current_movie = get_filter_series_page_movie_by_user_id(call.from_user.id)
-
-    print_info(current_page)
-    print_info(current_movie)
 
     if current_page == 1 and current_movie == 10:
         msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))

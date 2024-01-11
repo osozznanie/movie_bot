@@ -48,7 +48,7 @@ user_languages = {}
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
-    print_info(f"User {message.from_user.id} chose language {language_code} = cmd_language")
+
     *_, keyboard_markup = language_keyboard()
     await message.answer(TEXTS[language_code]['select_language'], reply_markup=keyboard_markup)
 
@@ -120,7 +120,6 @@ async def set_rating_choice_callback(query: types.CallbackQuery):
     rating_range = query.data.split('_')[3]
 
     rating_min, rating_max = map(float, rating_range.split('-'))
-    print_info(f"User {query.from_user.id} chose rating range {rating_min}-{rating_max} = set_rating_choice_callback")
 
     await send_random_content(query, language_code, tmdb_language_code, content_type, (rating_min, rating_max))
 
@@ -185,7 +184,6 @@ async def load_previous_movies_callback(call):
     language_code = get_user_language_from_db(call.from_user.id)
     if content_type == 'movie':
         await send_previous_media_by_popularity(call, language_code, 'movie')
-        print_info(call.data)
     elif content_type == 'tv':
         await send_previous_media_by_popularity(call, language_code, 'tv')
     await call.answer(show_alert=False)
@@ -313,8 +311,6 @@ async def handle_previous_page_rating(callback_query: types.CallbackQuery):
 # ========================================= Filter =========================================  #
 @dp.callback_query(lambda query: query.data.startswith('filter_genre_'))
 async def process_callback_filter_genre(call: types.CallbackQuery):
-    print_info("FILTER GENRE CALLBACK")
-
     language_code = get_user_language_from_db(call.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
     content_type = call.data.split('_')[2]
@@ -389,8 +385,6 @@ async def process_callback_filter_vote_count_choice(call: types.CallbackQuery):
     chosen_vote_count_option = call.data.split('_')[2]
     content_type = call.data.split('_')[3]
     language_code = get_user_language_from_db(call.from_user.id)
-    print_info(
-        f"User {call.from_user.id} chose vote count option {chosen_vote_count_option} = process_callback_filter_vote_count_choice")
 
     if content_type == 'movie':
         save_fields_to_table_search_movie_db(call.from_user.id, None, None, chosen_vote_count_option, None)
@@ -416,7 +410,6 @@ async def process_callback_filter_rating(call: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('sort_option_'))
 async def process_callback_sort_option(call: types.CallbackQuery):
-    print_info(call.data)
     chosen_sort_option = call.data.split('_')[2]
     content_type = call.data.split('_')[3]
     language_code = get_user_language_from_db(call.from_user.id)
@@ -444,8 +437,6 @@ async def process_search(call: types.CallbackQuery):
         msg_text = get_text(language_code, 'selected_filters') + "\n" + get_user_filters(user_id, content_type)
         await bot.edit_message_text(text=msg_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     parse_mode=ParseMode.HTML)
-
-    print_info(check_filters_exist(user_id, content_type))
 
     await send_next_page_filter(call, language_code, content_type)
     await call.answer(show_alert=False)
@@ -492,7 +483,6 @@ async def set_back_callback(query: types.CallbackQuery):
 
     select_option_text = get_text(language_code, 'select_option')
 
-    print_info(f"User {query.from_user.id} chose back option = set_back_callback")
     await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
                                 reply_markup=menu_keyboard(language_code))
 
