@@ -805,7 +805,6 @@ async def send_previous_page_filter(call, language_code, content_type):
 
 async def handle_previous_media(call, language_code, content_type, sort_order=None, vote_count=None):
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
-    print(sort_order)
     if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
         await call.answer(get_text(language_code, 'first_page'), show_alert=False)
         if sort_order:
