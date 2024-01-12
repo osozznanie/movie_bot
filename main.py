@@ -38,7 +38,7 @@ async def cmd_start(message: types.Message):
     else:
         await message.answer(
             f"<b>Welcome to {bot_info.first_name}.</b>\n 🇬🇧 Please select language \n 🇺🇦 Будь ласка, виберіть мову \n "
-            f"🇷🇺 Пожалуйста, выберите язык", reply_markup=keyboard_markup, parse_mode=ParseMode.HTML)
+            f"Пожалуйста, выберите язык", reply_markup=keyboard_markup, parse_mode=ParseMode.HTML)
 
 
 # ========================================= Language =========================================  #
@@ -194,6 +194,7 @@ async def reset_page_callback(call):
     await reset_movies(call, call.from_user.id, call.message.chat.id)
 
 
+
 @dp.callback_query(lambda query: query.data.startswith('filter_reset_page_'))
 async def reset_page_filter_callback(call):
     await call.answer(show_alert=False)
@@ -278,10 +279,6 @@ async def handle_next_page_rating(callback_query: types.CallbackQuery):
     elif content_type == 'tv':
         await send_next_media_by_rating(callback_query, sort_order=sort_order, vote_count=1000, content_type='tv')
 
-    while len(message_ids) > 5:
-        message_id = message_ids.pop(0)
-        await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
-
     await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
     await callback_query.answer(show_alert=False)
 
@@ -300,9 +297,6 @@ async def handle_previous_page_rating(callback_query: types.CallbackQuery):
                                                   language_code=user_language, sort_order=sort_order, vote_count=1000,
                                                   content_type='tv')
 
-    while len(message_ids) > 5:
-        message_id = message_ids.pop(0)
-        await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=message_id)
 
     await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
     await callback_query.answer(show_alert=False)
@@ -448,6 +442,7 @@ async def show_saved_media(call):
     user_id = call.from_user.id
     user_language = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[1]
+    store_message_id_in_db(user_id, 0)
 
     if content_type == 'movie':
         saved_media = [movie_id[0] for movie_id in get_saved_movies_from_db(user_id)]

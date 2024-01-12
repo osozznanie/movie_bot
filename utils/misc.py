@@ -1,5 +1,4 @@
 import asyncio
-import json
 import random
 
 import tmdbsimple as tmdb
@@ -16,6 +15,7 @@ from db.database import get_user_language_from_db, get_current_popular_by_user_i
     store_message_id_in_db
 from main import bot, user_languages
 from utils.texts import TEXTS
+
 
 def create_keyboard(movie_id, language_code, text_key, content_type):
     text = get_text(language_code, text_key)
@@ -53,7 +53,7 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
     message_text = ""
     index = 1
     for content in response['results'][current_movie:current_movie + 10]:
-        content_details = await send_content_details(index, content, content_type, genres, language_code)
+        content_details = await send_content_details(index, content, content_type, genres, language_code, current_page)
         message_text += content_details + "\n\n"
         index += 1
 
@@ -68,13 +68,13 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
     if message_id is None or message_id == 0:
         sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
         store_message_id_in_db(user_id, sent_message.message_id)
-        await create_keyboard_with_next_button(user_id, language_code, content_type)
+        await create_keyboard_with_next_button(user_id, language_code, content_type, type="popular")
     else:
         await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
 
 
 async def create_keyboard_with_next_button(user_id, language_code, content_type, call_for_next=None,
-                                           call_for_back=None):
+                                           call_for_back=None, type="any", sort_order="any"):
     if call_for_next is None:
         call_for_next = f'load_next_popular_{content_type}'
 
@@ -91,7 +91,8 @@ async def create_keyboard_with_next_button(user_id, language_code, content_type,
             types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
         ],
         [
-            types.InlineKeyboardButton(text=reset_button_text, callback_data=f'reset_page_{content_type}')
+            types.InlineKeyboardButton(text=reset_button_text,
+                                       callback_data=f'reset_page_{content_type}_{type}_{sort_order}')
         ]
     ]
 
@@ -101,7 +102,7 @@ async def create_keyboard_with_next_button(user_id, language_code, content_type,
     await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
 
 
-async def send_content_details(index, content, content_type, genres, language_code):
+async def send_content_details(index, content, content_type, genres, language_code, current_page=None):
     if index == None:
         index = 1
     title = content['title'] if 'title' in content and content_type == 'movie' else content[
@@ -149,15 +150,26 @@ async def reset_movies(call, user_id, chat_id):
     current_filter_tv_movie = 0
     current_filter_movie_page = 1
     current_filter_movie_movie = 0
+    content_type = call.data.split('_')[2]
+    type = call.data.split('_')[3]
+    sort_order = call.data.split('_')[4]
 
     update_current_popular(user_id, current_page, current_movie)
     update_current_rating(user_id, current_rating_page, current_rating_movie)
     set_filter_movie_page_movie_by_user_id(user_id, current_filter_movie_page, current_filter_movie_movie)
     set_filter_series_page_movie_by_user_id(user_id, current_filter_tv_page, current_filter_tv_movie)
+    language_code = get_user_language_from_db(call.from_user.id)
 
     await update_current_page_random(user_id, 'current_random_movie_page')
+    print(call.data)
 
     msg = await bot.send_message(chat_id, get_text(get_user_language_from_db(user_id), 'movie_list_reset'))
+    if type == "popular":
+        await send_next_media(call, language_code, call.data.split('_')[2])
+    elif type == "rating":
+        await send_next_media_by_rating(call, sort_order, 1000,
+                                        content_type)
+
     await delete_message_after_delay(5, call.from_user.id, msg.message_id)
 
 
@@ -173,7 +185,7 @@ async def reset_filters(user_id, chat_id, content_type):
     await delete_message_after_delay(5, chat_id, message.message_id)
 
 
-def generate_filter_submenu(language_code, content_type="any"):
+def generate_filter_submenu(language_code, content_type="any", type="any"):
     submenu_texts = get_text(language_code, 'filter_submenu')
 
     text = get_text(language_code, 'select_option')
@@ -192,7 +204,7 @@ def generate_filter_submenu(language_code, content_type="any"):
         ],
         [
             InlineKeyboardButton(text=get_text(language_code, 'reset'),
-                                 callback_data=f'filter_reset_page_{content_type}')
+                                 callback_data=f'filter_reset_page_{content_type}_{type}')
         ]
     ]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -298,10 +310,6 @@ def search_tv_shows(genre_filter, start_date, end_date, min_votes, max_votes, ra
     return results
 
 
-global message_ids
-message_ids = []
-
-
 async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_order, vote_count, content_type):
     user_id = callback_query.from_user.id
     current_page, current_movie = get_current_popular_by_user_id(user_id)
@@ -335,17 +343,64 @@ async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_or
         current_movie = 0
 
     update_current_popular(user_id, current_page, current_movie)
-
     message_id = get_message_id_from_db(user_id)
+    call_for_next = f'next_page_rating_{sort_order}_{content_type}'
+    call_for_back = f'previous_page_rating_{sort_order}_{content_type}'
+    type = "rating"
+
     if message_id is None or message_id == 0:
         sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
         store_message_id_in_db(user_id, sent_message.message_id)
+
+        next_button_text = get_text(language_code, 'next')
+        back_button_text = get_text(language_code, 'back')
+        reset_button_text = get_text(language_code, 'reset')
+
+        buttons = [
+            [
+                types.InlineKeyboardButton(text=back_button_text, callback_data=call_for_back),
+                types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
+            ],
+            [
+                types.InlineKeyboardButton(text=reset_button_text,
+                                           callback_data=f'reset_page_{content_type}_{type}_{sort_order}')
+            ]
+        ]
+
+        keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+
+        msg_text = get_text(language_code, 'next_movies')
+        await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
+
+
+
     else:
         await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
+        next_button_text = get_text(language_code, 'next')
+        back_button_text = get_text(language_code, 'back')
+        reset_button_text = get_text(language_code, 'reset')
+        buttons = [
 
-    await create_keyboard_with_next_button(user_id, language_code, content_type,
-                                           f'next_page_rating_{sort_order}_{content_type}',
-                                           f'previous_page_rating_{sort_order}_{content_type}')
+            [
+
+                types.InlineKeyboardButton(text=back_button_text, callback_data=call_for_back),
+
+                types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
+
+            ],
+
+            [
+
+                types.InlineKeyboardButton(text=reset_button_text,
+
+                                           callback_data=f'reset_page_{content_type}_{type}_{sort_order}')
+
+            ]
+
+        ]
+        keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+        msg_text = get_text(language_code, 'next_movies')
+        await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
 
 
 def get_genres(language_code, content_type='movie'):
@@ -381,7 +436,7 @@ def get_rating_mod(submenu_code_2, language_code, text_key_low='starting_low', t
 def language_keyboard():
     keyboard = [[types.InlineKeyboardButton(text='🇬🇧 English', callback_data='set_language_en')],
                 [types.InlineKeyboardButton(text='🇺🇦 Українська', callback_data='set_language_ua')],
-                [types.InlineKeyboardButton(text='🇷🇺 Русский', callback_data='set_language_ru')], ]
+                [types.InlineKeyboardButton(text='Русский', callback_data='set_language_ru')], ]
 
     main_keyboard = [
         [KeyboardButton(text='/menu'), KeyboardButton(text='/language')],
@@ -424,7 +479,7 @@ def get_message_text_for_card_by_film_id(lang, title, original_title, vote_avera
 
     formatted_adult = get_text(lang, 'yes') if adult is not None and adult else get_text(lang, 'no')
     message_parts = [
-        f'<b>{title}</b> (/film{id})\n\n',
+        f'<b>{title}</b> (/{content_type}{id})\n\n',
         f'<i>{original_title}</i>\n\n',
         f'📺 {type_text}: {get_text(lang, content_type)}\n',
         f'🎥 {release_year_text}: {release_year}\n'
@@ -751,7 +806,8 @@ async def send_next_page_filter(call, language_code, content_type):
     if not message_id or message_id == 0:
         sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
         store_message_id_in_db(user_id, sent_message.message_id)
-        await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}', f'previous_page_filter_{content_type}')
+        await create_keyboard_with_next_button(user_id, language_code, content_type, f'next_page_filter_{content_type}',
+                                               f'previous_page_filter_{content_type}', type="filter")
     else:
         await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
 
