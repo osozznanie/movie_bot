@@ -151,7 +151,6 @@ def reset_movies_without_sending_message(user_id):
     current_filter_movie_page = 1
     current_filter_movie_movie = 0
 
-
     update_current_popular(user_id, current_page, current_movie)
     update_current_rating(user_id, current_rating_page, current_rating_movie)
     set_filter_movie_page_movie_by_user_id(user_id, current_filter_movie_page, current_filter_movie_movie)
@@ -258,7 +257,7 @@ def generate_vote_count_submenu(language_code, content_type):
                             InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][1],
                                                  callback_data=f'vote_count_500-1000_{content_type}')], [
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][2],
-                                                    callback_data=f'vote_count_1000-10000_{content_type}'),
+                                                    callback_data=f'vote_count_1000-10000000_{content_type}'),
                                InlineKeyboardButton(text=TEXTS[language_code]['vote_count_options'][3],
                                                     callback_data=f'vote_count_100-10000000_{content_type}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=vote_count_keyboard)
@@ -806,13 +805,14 @@ async def send_previous_page_filter(call, language_code, content_type):
 
 async def handle_previous_media(call, language_code, content_type, sort_order=None, vote_count=None):
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
-
+    print(sort_order)
     if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
         await call.answer(get_text(language_code, 'first_page'), show_alert=False)
-        await create_keyboard_with_next_button(call.from_user.id, language_code, content_type,
-                                               f'next_page_rating_{sort_order}_{content_type}',
-                                               f'previous_page_rating_{sort_order}_{content_type}', type="rating",
-                                               sort_order=sort_order)
+        if sort_order:
+            await create_keyboard_with_next_button(call.from_user.id, language_code, content_type,
+                                                   f'next_page_rating_{sort_order}_{content_type}',
+                                                   f'previous_page_rating_{sort_order}_{content_type}', type="rating",
+                                                   sort_order=sort_order)
         return
     elif current_movie == 0:
         current_page -= 1
@@ -903,6 +903,8 @@ def get_user_filters(user_id, content_type):
         elif filter_key == 'user_rating':
             if filter_value == '100-10000000':
                 rating_text = '100+'
+            elif filter_value == '1000-10000':
+                rating_text = '1000+'
             else:
                 rating_text = filter_value if filter_value else not_indicated
             filter_descriptions.append(f"{get_text(language_code, 'user_rating')}: {rating_text}")
