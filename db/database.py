@@ -19,12 +19,12 @@ def connect_to_database():
 def create_users_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS users ("
-                       "user_id SERIAL PRIMARY KEY, "
-                       "username VARCHAR(32) NOT NULL, "
+                       "user_id BIGINT PRIMARY KEY, "
+                       "username VARCHAR(60) NOT NULL, "
                        "language VARCHAR(5), "
                        "reg_date DATE, "
                        "update_date DATE, "
-                       "message_id INTEGER);")
+                       "message_id BIGINT);")
         print("Table 'users' created successfully")
 
 
@@ -44,7 +44,7 @@ def get_message_id_from_db(user_id):
 def create_user_pages_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS user_pages ("
-                       "user_id INT PRIMARY KEY, "
+                       "user_id BIGINT PRIMARY KEY, "
                        "current_popular_page INT DEFAULT 1, "
                        "current_popular_movie INT DEFAULT 0, "
                        "current_rating_page INT DEFAULT 1, "
@@ -62,7 +62,7 @@ def create_user_pages_table():
 def create_saved_movies_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS saved_movies ("
-                       "user_id INT, "
+                       "user_id BIGINT, "
                        "movie_id INT, "
                        "PRIMARY KEY (user_id, movie_id));")
         print("Table 'saved_movies' created successfully")
@@ -72,7 +72,7 @@ def create_search_movie_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS search_movie ("
                        "id SERIAL PRIMARY KEY, "
-                       "user_id INT UNIQUE, "
+                       "user_id BIGINT UNIQUE, "
                        "genre_id INT, "
                        "year_range VARCHAR(255) DEFAULT 'any', "
                        "user_rating VARCHAR(255) DEFAULT 'any', "
@@ -84,7 +84,7 @@ def create_search_series_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS search_series ("
                        "id SERIAL PRIMARY KEY, "
-                       "user_id INT UNIQUE, "
+                       "user_id BIGINT UNIQUE, "
                        "genre_id INT, "
                        "year_range VARCHAR(255) DEFAULT 'any', "
                        "user_rating VARCHAR(255) DEFAULT 'any', "
@@ -95,7 +95,7 @@ def create_search_series_table():
 def create_saved_series_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS saved_series ("
-                       "user_id INT, "
+                       "user_id BIGINT, "
                        "series_id INT, "
                        "PRIMARY KEY (user_id, series_id));")
         print("Table 'saved_series' created successfully")

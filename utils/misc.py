@@ -902,7 +902,7 @@ def get_user_filters(user_id, content_type):
         elif filter_key == 'user_rating':
             if filter_value == '100-10000000':
                 rating_text = '100+'
-            elif filter_value == '1000-10000':
+            elif not filter == '1000-10000000':
                 rating_text = '1000+'
             else:
                 rating_text = filter_value if filter_value else not_indicated
