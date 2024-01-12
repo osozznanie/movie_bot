@@ -404,10 +404,9 @@ async def process_callback_filter_rating(call: types.CallbackQuery):
 
 @dp.callback_query(lambda query: query.data.startswith('sort_option_'))
 async def process_callback_sort_option(call: types.CallbackQuery):
-    chosen_sort_option = call.data.split('_')[2]
-    content_type = call.data.split('_')[3]
+    content_type = call.data.split('_')[4]
     language_code = get_user_language_from_db(call.from_user.id)
-
+    chosen_sort_option = 'vote_' + call.data.split('_')[3]
     if content_type == 'movie':
         save_fields_to_table_search_movie_db(call.from_user.id, None, None, None, chosen_sort_option)
     elif content_type == 'tv':
@@ -499,7 +498,7 @@ async def cmd_menu(message: types.Message):
     user_id = message.from_user.id
     language_code = get_user_language_from_db(user_id)
     store_message_id_in_db(user_id, 0)
-
+    reset_movies_without_sending_message(user_id)
     menu_message = TEXTS[language_code]['select_menu']
 
     await message.answer(menu_message, reply_markup=menu_keyboard(language_code))

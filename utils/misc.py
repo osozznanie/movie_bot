@@ -102,32 +102,6 @@ async def create_keyboard_with_next_button(user_id, language_code, content_type,
     await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
 
 
-async def create_keyboard_with_next_button_for_rating(user_id, language_code, content_type, sort_order="asc"):
-    call_for_next = f'next_page_rating_{sort_order}_{content_type}'
-    call_for_back = f'previous_page_rating_{sort_order}_{content_type}'
-    type = "rating"
-
-    next_button_text = get_text(language_code, 'next')
-    back_button_text = get_text(language_code, 'back')
-    reset_button_text = get_text(language_code, 'reset')
-
-    buttons = [
-        [
-            types.InlineKeyboardButton(text=back_button_text, callback_data=call_for_back),
-            types.InlineKeyboardButton(text=next_button_text, callback_data=call_for_next),
-        ],
-        [
-            types.InlineKeyboardButton(text=reset_button_text,
-                                       callback_data=f'reset_page_{content_type}_{type}_{sort_order}')
-        ]
-    ]
-
-    keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-
-    msg_text = get_text(language_code, 'next_movies')
-    await bot.send_message(user_id, msg_text, reply_markup=keyboard_markup)
-
-
 async def send_content_details(index, content, content_type, genres, language_code, current_page=None):
     if index == None:
         index = 1
@@ -167,6 +141,23 @@ async def send_content_details(index, content, content_type, genres, language_co
     return message_text or ""
 
 
+def reset_movies_without_sending_message(user_id):
+    current_page = 1
+    current_movie = 0
+    current_rating_movie = 0
+    current_rating_page = 1
+    current_filter_tv_page = 1
+    current_filter_tv_movie = 0
+    current_filter_movie_page = 1
+    current_filter_movie_movie = 0
+
+
+    update_current_popular(user_id, current_page, current_movie)
+    update_current_rating(user_id, current_rating_page, current_rating_movie)
+    set_filter_movie_page_movie_by_user_id(user_id, current_filter_movie_page, current_filter_movie_movie)
+    set_filter_series_page_movie_by_user_id(user_id, current_filter_tv_page, current_filter_tv_movie)
+
+
 async def reset_movies(call, user_id, chat_id):
     current_page = 1
     current_movie = 0
@@ -187,7 +178,6 @@ async def reset_movies(call, user_id, chat_id):
     language_code = get_user_language_from_db(call.from_user.id)
 
     await update_current_page_random(user_id, 'current_random_movie_page')
-    print(call.data)
 
     msg = await bot.send_message(chat_id, get_text(get_user_language_from_db(user_id), 'movie_list_reset'))
     if type == "popular":
@@ -213,7 +203,6 @@ async def reset_filters(user_id, chat_id, content_type):
 
 def generate_filter_submenu(language_code, content_type="any", type="any"):
     submenu_texts = get_text(language_code, 'filter_submenu')
-
     text = get_text(language_code, 'select_option')
     buttons = [
         [
@@ -280,9 +269,9 @@ def generate_vote_count_submenu(language_code, content_type):
 def generate_rating_submenu(language_code, content_type):
     rating_keyboard = [
         [InlineKeyboardButton(text=TEXTS[language_code]['starting_low'],
-                              callback_data=f'sort_option_popularity.asc_{content_type}')],
+                              callback_data=f'sort_option_vote_average.asc_{content_type}')],
         [InlineKeyboardButton(text=TEXTS[language_code]['starting_high'],
-                              callback_data=f'sort_option_popularity.desc_{content_type}')]]
+                              callback_data=f'sort_option_vote_average.desc_{content_type}')]]
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=rating_keyboard)
 
     return keyboard_markup
@@ -345,11 +334,11 @@ async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_or
 
     if content_type == 'movie':
         media_api = tmdb.Discover()
-        response = media_api.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
+        response = media_api.movie(sort_by=f'popularity.{sort_order}', vote_count_gte=vote_count,
                                    language=tmdb_language_code, page=current_page)
     elif content_type == 'tv':
         media_api = tmdb.Discover()
-        response = media_api.tv(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
+        response = media_api.tv(sort_by=f'popularity.{sort_order}', vote_count_gte=vote_count,
                                 language=tmdb_language_code, page=current_page)
     else:
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
@@ -370,17 +359,15 @@ async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_or
 
     update_current_popular(user_id, current_page, current_movie)
     message_id = get_message_id_from_db(user_id)
-    if message_id is None or message_id == 0:
-        sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
-        store_message_id_in_db(user_id, sent_message.message_id)
-        await create_keyboard_with_next_button(user_id, language_code, content_type,
-                                               f'next_page_rating_{sort_order}_{content_type}',
-                                               f'previous_page_rating_{sort_order}_{content_type}', type="rating",
-                                               sort_order=sort_order)
-    else:
-        await bot.edit_message_text(chat_id=user_id, message_id=message_id, text=message_text, parse_mode='HTML')
+    if message_id is not None and message_id != 0:
+        await bot.delete_message(chat_id=user_id, message_id=message_id)
 
-
+    sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
+    store_message_id_in_db(user_id, sent_message.message_id)
+    await create_keyboard_with_next_button(user_id, language_code, content_type,
+                                           f'next_page_rating_{sort_order}_{content_type}',
+                                           f'previous_page_rating_{sort_order}_{content_type}', type="rating",
+                                           sort_order=sort_order)
 
 
 def get_genres(language_code, content_type='movie'):
@@ -456,10 +443,13 @@ def get_message_text_for_card_by_film_id(lang, title, original_title, vote_avera
     rating_text = get_text(lang, 'rating_card')
 
     formatted_genres = ' | '.join(genre_names)
-
+    if content_type == 'movie':
+        msg_text = f'/film{id}'
+    else:
+        msg_text = f'/tv{id}'
     formatted_adult = get_text(lang, 'yes') if adult is not None and adult else get_text(lang, 'no')
     message_parts = [
-        f'<b>{title}</b> (/{content_type}{id})\n\n',
+        f'<b>{title}</b> ({msg_text})\n\n',
         f'<i>{original_title}</i>\n\n',
         f'📺 {type_text}: {get_text(lang, content_type)}\n',
         f'🎥 {release_year_text}: {release_year}\n'
@@ -798,11 +788,12 @@ async def send_previous_page_filter(call, language_code, content_type):
     elif content_type == 'tv':
         current_page, current_movie = get_filter_series_page_movie_by_user_id(call.from_user.id)
 
-    if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
-        msg_text = await bot.send_message(call.from_user.id, get_text(language_code, 'first_page'))
-        await delete_message_after_delay(5, msg_text.message_id, call.message.message_id)
-        return
-    elif current_movie == 0:
+    for i in range(11):
+        if current_page == 1 and current_movie == i or current_page == 1 and current_movie == 0:
+            await call.answer(get_text(language_code, 'first_page'), show_alert=False)
+            return
+
+    if current_movie == 0:
         current_page -= 1
         current_movie = 0
     elif current_movie == 10:
@@ -817,7 +808,11 @@ async def handle_previous_media(call, language_code, content_type, sort_order=No
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
 
     if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
-        await call.answer(get_text(language_code, 'first_page'), show_alert=True)
+        await call.answer(get_text(language_code, 'first_page'), show_alert=False)
+        await create_keyboard_with_next_button(call.from_user.id, language_code, content_type,
+                                               f'next_page_rating_{sort_order}_{content_type}',
+                                               f'previous_page_rating_{sort_order}_{content_type}', type="rating",
+                                               sort_order=sort_order)
         return
     elif current_movie == 0:
         current_page -= 1
@@ -884,7 +879,6 @@ def get_user_filters(user_id, content_type):
     else:
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
-    # Convert list of genres to dictionary for easy lookup
     genres_dict = {genre['id']: genre['name'] for genre in genres}
 
     year = get_text(language_code, 'year')
@@ -892,8 +886,8 @@ def get_user_filters(user_id, content_type):
     filter_descriptions = []
 
     rating_text_map = {
-        'popularity.desc': get_text(language_code, 'popularity_desc'),
-        'popularity.asc': get_text(language_code, 'popularity_asc'),
+        'vote_average.desc': get_text(language_code, 'popularity_desc'),
+        'vote_average.asc': get_text(language_code, 'popularity_asc'),
     }
 
     filter_keys = ['genre', 'release_date', 'user_rating', 'rating']
@@ -907,7 +901,10 @@ def get_user_filters(user_id, content_type):
             date_text = f"{filter_value.split('-')[0]}{year}  - {filter_value.split('-')[1]}{year}" if filter_value else not_indicated
             filter_descriptions.append(f"{get_text(language_code, 'release_date')}: {date_text}")
         elif filter_key == 'user_rating':
-            rating_text = filter_value if filter_value and filter_value != '100-10000000' else not_indicated
+            if filter_value == '100-10000000':
+                rating_text = '100+'
+            else:
+                rating_text = filter_value if filter_value else not_indicated
             filter_descriptions.append(f"{get_text(language_code, 'user_rating')}: {rating_text}")
         elif filter_key == 'rating':
             rating_text = rating_text_map.get(filter_value, filter_value) if filter_value else not_indicated
@@ -918,13 +915,14 @@ def get_user_filters(user_id, content_type):
     return filter_text
 
 
-def check_filters_exist(user_id, content_type):
+async def check_filters_exist(user_id, content_type):
     if content_type == 'movie':
         filters = get_filters_movie_from_db(user_id)
     elif content_type == 'tv':
         filters = get_filters_series_from_db(user_id)
     else:
-        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+        await bot.send_message(user_id, get_text(get_user_language_from_db(user_id), 'invalid_content_type_filer'))
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'. Your content_type is " + content_type)
 
     genre = filters.get('genre')
     release_date = filters.get('release_date')
