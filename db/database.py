@@ -45,6 +45,7 @@ def create_user_pages_table():
     with connection.cursor() as cursor:
         cursor.execute("CREATE TABLE IF NOT EXISTS user_pages ("
                        "user_id BIGINT PRIMARY KEY, "
+                       "content_display_page INT DEFAULT 0,"
                        "current_popular_page INT DEFAULT 1, "
                        "current_popular_movie INT DEFAULT 0, "
                        "current_rating_page INT DEFAULT 1, "

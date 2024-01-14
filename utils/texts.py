@@ -90,6 +90,7 @@ TEXTS = {
         'first_page': 'You are on the first page. Click "Next" to download the next 10 movies.',
         'save_yet': 'Saved',
         'invalid_content_type_filer': 'Go to the menu and select the type of content you want to save.',
+        'back_to_fist_page': 'Back to the beginning',
     },
     'ua': {
         'select_language': 'Будь ласка, виберіть мову:',
@@ -182,6 +183,7 @@ TEXTS = {
         'first_page': 'Ви на першій сторінці. Натисніть "Далі", щоб завантажити наступні 10 фільмів.',
         'save_yet': 'Збережено',
         'invalid_content_type_filer': 'Перейдіть в меню та виберіть тип контенту, який ви хочете зберегти.',
+        'back_to_fist_page': 'Повернутися на початок',
     },
     'ru': {
         'select_language': 'Пожалуйста, выберите язык:',
@@ -228,6 +230,7 @@ TEXTS = {
         'filter_rating_txt': 'Выберите рейтинг',
         'next_movies': 'Нажмите "Назад", чтобы перейти на предыдущую страницу, "Далее", чтобы загрузить следующие фильмы, или "Сброс", чтобы начать сначала.',
         'reset': 'Сбросить',
+        'back_to_fist_page': 'Вернуться в начало',
         'next': 'Далее',
         'type': 'Тип',
         'release_year': 'Дата выхода',

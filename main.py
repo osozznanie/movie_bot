@@ -1,12 +1,12 @@
 ﻿import logging
 
-from aiogram import Bot, types, filters
+from aiogram import Bot
 from aiogram import Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 
 from db.database import *
-from utils import api, texts
+from utils import api
 from utils.misc import *
 from utils.texts import TEXTS
 
@@ -44,6 +44,7 @@ async def cmd_start(message: types.Message):
 # ========================================= Language =========================================  #
 user_languages = {}
 
+
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
     language_code = get_user_language_from_db(message.from_user.id)
@@ -69,7 +70,8 @@ async def set_language_callback(query: types.CallbackQuery):
 
     selected_language = TEXTS[language_code]['selected_language']
 
-    await bot.send_message(query.from_user.id, select_menu, reply_markup=menu_keyboard(language_code),
+    await bot.send_message(query.from_user.id, select_menu, reply_markup=menu_keyboard(language_code,
+                                                                                       query),
                            parse_mode=ParseMode.HTML)
     await bot.answer_callback_query(query.id, f"Language set to {language_code}")
 
@@ -179,7 +181,6 @@ async def load_next_movies_callback(call):
 @dp.callback_query(lambda query: query.data.startswith('load_previous_popular_'))
 async def load_previous_movies_callback(call):
     content_type = call.data.split('_')[3]
-
     language_code = get_user_language_from_db(call.from_user.id)
     if content_type == 'movie':
         await send_previous_media_by_popularity(call, language_code, 'movie')
@@ -192,7 +193,6 @@ async def load_previous_movies_callback(call):
 async def reset_page_callback(call):
     await call.answer(show_alert=False)
     await reset_movies(call, call.from_user.id, call.message.chat.id)
-
 
 
 @dp.callback_query(lambda query: query.data.startswith('filter_reset_page_'))
@@ -296,7 +296,6 @@ async def handle_previous_page_rating(callback_query: types.CallbackQuery):
         await send_previous_movies_by_rating_TMDB(callback_query,
                                                   language_code=user_language, sort_order=sort_order, vote_count=1000,
                                                   content_type='tv')
-
 
     await bot.delete_message(chat_id=callback_query.message.chat.id, message_id=callback_query.message.message_id)
     await callback_query.answer(show_alert=False)
@@ -437,11 +436,11 @@ async def process_search(call: types.CallbackQuery):
 
 # ========================================= Saved movies =========================================  #
 @dp.callback_query(lambda c: c.data in ['saved_movie', 'saved_tv'])
-async def show_saved_media(call):
+async def show_saved_media(call: types.CallbackQuery):
     user_id = call.from_user.id
-    user_language = get_user_language_from_db(user_id)
     content_type = call.data.split('_')[1]
-    store_message_id_in_db(user_id, 0)
+    user_language = get_user_language_from_db(user_id)
+    tmdb_language_code = get_text(user_language, 'LANGUAGE_CODES')
 
     if content_type == 'movie':
         saved_media = [movie_id[0] for movie_id in get_saved_movies_from_db(user_id)]
@@ -451,10 +450,23 @@ async def show_saved_media(call):
     if not saved_media:
         not_found = await bot.send_message(call.from_user.id, get_text(user_language, 'not_found_saved_content'))
         await delete_message_after_delay(10, call.from_user.id, not_found.message_id)
-
-    for media_id in saved_media:
-        await send_content_details_by_content_id(media_id, content_type, call, True)
-        await asyncio.sleep(0.5)
+    else:
+        for index, content_id in enumerate(saved_media, start=1):
+            content, genres = get_content_by_id(content_id, content_type, tmdb_language_code)
+            title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
+                content, content_type)
+            # Limit the overview to 100 characters
+            overview = (overview[:97] + '...') if len(overview) > 100 else overview
+            message_text = get_message_text_for_card_from_TMDB(index, user_language, title, vote_average,
+                                                               genre_names,
+                                                               release_year, overview, content_type, content_id)
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(text=get_text(user_language, 'delete'),
+                                               callback_data=f"delete_{content_id}_{content_type}")
+                ]
+            ])
+            await bot.send_message(call.from_user.id, message_text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
 # ========================================= Delete =========================================  #
@@ -464,8 +476,11 @@ async def delete_callback(query: types.CallbackQuery):
     movie_id = query.data.split('_')[1]
     user_id = query.from_user.id
 
-    delete_movie_from_db(user_id, movie_id)
-    delete_tv_from_db(user_id, movie_id)
+    if query.data.split('_')[2] == 'movie':
+        delete_movie_from_db(user_id, movie_id)
+    elif query.data.split('_')[2] == 'tv':
+        delete_tv_from_db(user_id, movie_id)
+
 
     await bot.delete_message(chat_id=query.message.chat.id, message_id=query.message.message_id)
 
@@ -478,7 +493,7 @@ async def set_back_callback(query: types.CallbackQuery):
     select_option_text = get_text(language_code, 'select_option')
 
     await bot.edit_message_text(select_option_text, chat_id=query.from_user.id, message_id=query.message.message_id,
-                                reply_markup=menu_keyboard(language_code))
+                                reply_markup=menu_keyboard(language_code, query))
 
 
 # =========================================  Help =========================================  #
@@ -497,11 +512,10 @@ async def cmd_help(message: types.Message):
 async def cmd_menu(message: types.Message):
     user_id = message.from_user.id
     language_code = get_user_language_from_db(user_id)
-    store_message_id_in_db(user_id, 0)
     reset_movies_without_sending_message(user_id)
     menu_message = TEXTS[language_code]['select_menu']
 
-    await message.answer(menu_message, reply_markup=menu_keyboard(language_code))
+    await message.answer(menu_message, reply_markup=menu_keyboard(language_code, message))
 
 
 # =========================================  Saved  =========================================  #

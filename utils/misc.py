@@ -33,6 +33,46 @@ def check_type(content_type):
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
 
+user_data = []
+
+
+def manage_user_data(user_id, user_data):
+    # Check if user data already exists
+    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
+    if user_data_entry_index is None:
+        # If not, add a new entry with user_id and user_page = 1
+        user_data.append((user_id, 1))
+        user_page = 1
+    else:
+        # If it does, increment user_page by 1 and update the entry in the list
+        user_data[user_data_entry_index] = (
+            user_data[user_data_entry_index][0], user_data[user_data_entry_index][1] + 1)
+        user_page = user_data[user_data_entry_index][1]
+
+    print("user_data" + str(user_data))
+    return user_page
+
+
+def resetting_user_data(user_id, user_data):
+    # Find the user's data and reset the page count
+    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
+    if user_data_entry_index is not None:
+        user_data[user_data_entry_index] = (user_id, 0)
+
+    print("resetting" + str(user_data))
+    return user_data
+
+
+def backward_page(user_id, user_data):
+    # Find the user's data and decrement the page count
+    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
+    if user_data_entry_index is not None and user_data[user_data_entry_index][1] > 0:
+        user_data[user_data_entry_index] = (user_id, user_data[user_data_entry_index][1] - 2)
+
+    print("backward" + str(user_data))
+    return user_data
+
+
 async def send_next_media(callback_query: types.CallbackQuery, language_code, content_type):
     user_id = callback_query.from_user.id
     current_page, current_movie = get_current_popular_by_user_id(user_id)
@@ -64,6 +104,9 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
 
     update_current_popular(user_id, current_page, current_movie)
 
+    user_page = manage_user_data(user_id, user_data)
+    message_text += f"\nВы на странице {user_page}"
+
     message_id = get_message_id_from_db(user_id)
     if message_id is None or message_id == 0:
         sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
@@ -83,7 +126,7 @@ async def create_keyboard_with_next_button(user_id, language_code, content_type,
 
     next_button_text = get_text(language_code, 'next')
     back_button_text = get_text(language_code, 'back')
-    reset_button_text = get_text(language_code, 'reset')
+    reset_button_text = get_text(language_code, 'back_to_fist_page')
 
     buttons = [
         [
@@ -134,7 +177,7 @@ async def send_content_details(index, content, content_type, genres, language_co
     message_text = get_message_text_for_card_from_TMDB(index, language_code, title, vote_average,
                                                        genre_names,
                                                        release_date.split('-')[0], overview,
-                                                       content_type, content['id'])
+                                                       content_type, content['id'], current_page=current_page)
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
 
@@ -170,6 +213,7 @@ async def reset_movies(call, user_id, chat_id):
     type = call.data.split('_')[3]
     sort_order = call.data.split('_')[4]
 
+    resetting_user_data(user_id, user_data)
     update_current_popular(user_id, current_page, current_movie)
     update_current_rating(user_id, current_rating_page, current_rating_movie)
     set_filter_movie_page_movie_by_user_id(user_id, current_filter_movie_page, current_filter_movie_movie)
@@ -420,8 +464,12 @@ async def delete_message_after_delay(delay, chat_id, message_id):
     await bot.delete_message(chat_id, message_id)
 
 
-def menu_keyboard(language_code):
+def menu_keyboard(language_code, call):
     option_texts = get_text(language_code, 'menu_keyboard')
+
+    user_id = call.from_user.id
+    resetting_user_data(user_id, user_data)
+    store_message_id_in_db(user_id, 0)
 
     keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'menu_option_1_{language_code}'),
                  types.InlineKeyboardButton(text=option_texts[1], callback_data=f'menu_option_2_{language_code}'), ],
@@ -473,7 +521,7 @@ def get_message_text_for_card_by_film_id(lang, title, original_title, vote_avera
 
 
 def get_message_text_for_card_from_TMDB(index, lang, title, vote_average, genre_names, release_year,
-                                        overview, content_type, id=None):
+                                        overview, content_type, id=None, current_page=None):
     rating_text = get_text(lang, 'rating_card')
     release_year_text = get_text(lang, 'release_year')
     description_text = get_text(lang, 'description')
@@ -535,24 +583,6 @@ def get_series_details_from_TMDB(series_id, tmdb_language_code):
     return series_details
 
 
-def get_media_details_and_format_message(media_id, media_type, lang, tmdb_language_code):
-    if media_type == 'movie':
-        media_details = get_movie_details_from_TMDB(media_id, tmdb_language_code)
-    elif media_type == 'tv':
-        media_details = get_series_details_from_TMDB(media_id, tmdb_language_code)
-    else:
-        raise ValueError("Invalid media type. Expected 'movie' or 'series'.")
-
-    title, original_title, poster_path, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
-        media_details, media_type)
-
-    message_text = get_message_text_for_card_from_TMDB(lang, title, original_title, vote_average, genre_names,
-                                                       release_year, runtime,
-                                                       overview, media_type, adult, additional_info, media_id)
-
-    return message_text, poster_path
-
-
 def set_user_language(user_id, language_code):
     user_languages[user_id] = language_code
 
@@ -561,6 +591,10 @@ async def send_option_message(query, language_code, select_option_text, check=No
     movies_text = get_text(language_code, 'movies')
     series_text = get_text(language_code, 'series')
     back_text = get_text(language_code, 'back')
+
+    user_id = query.from_user.id
+    resetting_user_data(user_id, user_data)
+    store_message_id_in_db(user_id, 0)
 
     movies_button = types.InlineKeyboardButton(text=movies_text, callback_data='saved_movie')
     series_button = types.InlineKeyboardButton(text=series_text, callback_data='saved_tv')
@@ -590,6 +624,19 @@ def extract_content_info(content_info, content_type):
     additional_info = None if content_type == 'movie' else content_info['number_of_seasons']
 
     return title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info
+
+
+def get_content_by_id(content_id, content_type, language):
+    if content_type == 'movie':
+        content = tmdb.Movies(content_id).info(language=language)
+    elif content_type == 'tv':
+        content = tmdb.TV(content_id).info(language=language)
+    else:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    genres = [genre['name'] for genre in content['genres']]
+
+    return content, genres
 
 
 async def send_content_details_by_content_id(content_id, content_type, call, save=False):
@@ -819,12 +866,14 @@ async def handle_previous_media(call, language_code, content_type, sort_order=No
     elif current_movie == 10:
         current_page -= 1
         current_movie = 10
+    backward_page(call.from_user.id, user_data)
     update_current_popular(call.from_user.id, current_page, current_movie)
 
     if sort_order is None:
         await send_next_media(call, language_code, content_type)
     else:
         await send_next_media_by_rating(call, sort_order=sort_order, vote_count=vote_count, content_type=content_type)
+
 
 
 async def send_previous_media_by_popularity(call, language_code, content_type):
