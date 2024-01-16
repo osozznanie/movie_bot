@@ -1,5 +1,5 @@
-import os
 import psycopg2
+
 import config
 
 connection = None
@@ -102,6 +102,18 @@ def create_saved_series_table():
         print("Table 'saved_series' created successfully")
 
 
+def check_content_exists_in_db(user_id, content_id, content_type):
+    with connection.cursor() as cursor:
+        if content_type == 'movie':
+            cursor.execute("SELECT movie_id FROM saved_movies WHERE user_id = %s AND movie_id = %s", (user_id, content_id))
+        elif content_type == 'tv':
+            cursor.execute("SELECT series_id FROM saved_series WHERE user_id = %s AND series_id = %s", (user_id, content_id))
+        else:
+            raise ValueError("Invalid content_type. Expected 'movie' or 'tv'. Your content_type is " + content_type)
+        result = cursor.fetchone()
+        return result is not None
+
+
 def save_series_to_db(user_id, series_id):
     connection.autocommit = True
     with connection.cursor() as cursor:
@@ -118,6 +130,16 @@ async def setup_database():
     create_search_movie_table()
     create_search_series_table()
     create_saved_series_table()
+
+
+def get_content_display_page(user_id):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT content_display_page FROM user_pages WHERE user_id = %s", (user_id,))
+        result = cursor.fetchone()
+        if result is not None:
+            return result[0]
+        else:
+            return None
 
 
 def get_user_language_from_db(user_id):
@@ -190,6 +212,17 @@ def save_movie_to_db(user_id, movie_id):
                        "ON CONFLICT (user_id, movie_id) DO NOTHING;", (user_id, movie_id))
 
 
+def set_content_display_page(user_id, content_display_page):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO user_pages (user_id, content_display_page)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE
+            SET content_display_page = %s
+        """, (user_id, content_display_page, content_display_page))
+
+
 def save_fields_to_table_search_movie_db(user_id, genre_id=None, year_range=None, user_rating=None, rating=None):
     connection.autocommit = True
     with connection.cursor() as cursor:
@@ -208,10 +241,16 @@ def save_fields_to_table_search_movie_db(user_id, genre_id=None, year_range=None
             update_fields.append("rating = %s")
             update_values.append(rating)
         update_clause = ", ".join(update_fields)
-        cursor.execute(f"INSERT INTO search_movie (user_id, genre_id, year_range, user_rating, rating) "
-                       f"VALUES (%s, %s, %s, %s, %s) "
-                       f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
-                       [user_id, genre_id, year_range, user_rating, rating] + update_values)
+        if update_clause:
+            cursor.execute(f"INSERT INTO search_movie (user_id, genre_id, year_range, user_rating, rating) "
+                           f"VALUES (%s, %s, %s, %s, %s) "
+                           f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
+                           [user_id, genre_id, year_range, user_rating, rating] + update_values)
+        else:
+            cursor.execute(f"INSERT INTO search_movie (user_id, genre_id, year_range, user_rating, rating) "
+                           f"VALUES (%s, %s, %s, %s, %s) "
+                           f"ON CONFLICT (user_id) DO NOTHING;",
+                           [user_id, genre_id, year_range, user_rating, rating])
 
 
 def save_fields_to_table_search_series_db(user_id, genre_id=None, year_range=None, user_rating=None, rating=None):
@@ -232,10 +271,16 @@ def save_fields_to_table_search_series_db(user_id, genre_id=None, year_range=Non
             update_fields.append("rating = %s")
             update_values.append(rating)
         update_clause = ", ".join(update_fields)
-        cursor.execute(f"INSERT INTO search_series (user_id, genre_id, year_range, user_rating, rating) "
-                       f"VALUES (%s, %s, %s, %s, %s) "
-                       f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
-                       [user_id, genre_id, year_range, user_rating, rating] + update_values)
+        if update_clause:
+            cursor.execute(f"INSERT INTO search_series (user_id, genre_id, year_range, user_rating, rating) "
+                           f"VALUES (%s, %s, %s, %s, %s) "
+                           f"ON CONFLICT (user_id) DO UPDATE SET {update_clause};",
+                           [user_id, genre_id, year_range, user_rating, rating] + update_values)
+        else:
+            cursor.execute(f"INSERT INTO search_series (user_id, genre_id, year_range, user_rating, rating) "
+                           f"VALUES (%s, %s, %s, %s, %s) "
+                           f"ON CONFLICT (user_id) DO NOTHING;",
+                           [user_id, genre_id, year_range, user_rating, rating])
 
 
 def delete_movie_from_db(user_id, movie_id):
@@ -370,6 +415,14 @@ def reset_filters_movie(user_id):
     with connection.cursor() as cursor:
         cursor.execute(
             "UPDATE search_movie SET genre_id = NULL, year_range = NULL, user_rating = NULL, rating = NULL WHERE user_id = %s;",
+            (user_id,))
+
+
+def reset_genre_filter_movie(user_id):
+    connection.autocommit = True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE search_movie SET genre_id = NULL WHERE user_id = %s;",
             (user_id,))
 
 

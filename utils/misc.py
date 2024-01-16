@@ -1,19 +1,23 @@
 import asyncio
 import random
 
+import requests
 import tmdbsimple as tmdb
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile, KeyboardButton
-from tmdbsimple import Genres
+from tmdb import Movie
+from tmdbsimple import Genres, TV
 
+from config import BOT_TOKEN
 from db.database import get_user_language_from_db, get_current_popular_by_user_id, update_current_popular, \
     update_current_rating, update_current_page_random, get_current_page_random, get_filters_movie_from_db, \
     get_filters_series_from_db, \
     set_filter_movie_page_movie_by_user_id, \
     get_filter_movie_page_movie_by_user_id, get_filter_series_page_movie_by_user_id, \
     set_filter_series_page_movie_by_user_id, reset_filters_movie, reset_filters_series, get_message_id_from_db, \
-    store_message_id_in_db
+    store_message_id_in_db, set_content_display_page, get_content_display_page, check_content_exists_in_db
 from main import bot, user_languages
+from utils.api import TMDB_API_KEY
 from utils.texts import TEXTS
 
 
@@ -33,44 +37,21 @@ def check_type(content_type):
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
 
 
-user_data = []
-
-
-def manage_user_data(user_id, user_data):
-    # Check if user data already exists
-    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
-    if user_data_entry_index is None:
-        # If not, add a new entry with user_id and user_page = 1
-        user_data.append((user_id, 1))
-        user_page = 1
-    else:
-        # If it does, increment user_page by 1 and update the entry in the list
-        user_data[user_data_entry_index] = (
-            user_data[user_data_entry_index][0], user_data[user_data_entry_index][1] + 1)
-        user_page = user_data[user_data_entry_index][1]
-
-    print("user_data" + str(user_data))
+def manage_user_data(user_id):
+    user_page = get_content_display_page(user_id)
+    user_page += 1
+    set_content_display_page(user_id, user_page)
     return user_page
 
 
-def resetting_user_data(user_id, user_data):
-    # Find the user's data and reset the page count
-    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
-    if user_data_entry_index is not None:
-        user_data[user_data_entry_index] = (user_id, 0)
-
-    print("resetting" + str(user_data))
-    return user_data
+def resetting_user_data(user_id):
+    set_content_display_page(user_id, 0)
 
 
-def backward_page(user_id, user_data):
-    # Find the user's data and decrement the page count
-    user_data_entry_index = next((index for index, entry in enumerate(user_data) if entry[0] == user_id), None)
-    if user_data_entry_index is not None and user_data[user_data_entry_index][1] > 0:
-        user_data[user_data_entry_index] = (user_id, user_data[user_data_entry_index][1] - 2)
-
-    print("backward" + str(user_data))
-    return user_data
+def backward_page(user_id):
+    user_page = get_content_display_page(user_id)
+    user_page -= 2
+    set_content_display_page(user_id, user_page)
 
 
 async def send_next_media(callback_query: types.CallbackQuery, language_code, content_type):
@@ -104,8 +85,9 @@ async def send_next_media(callback_query: types.CallbackQuery, language_code, co
 
     update_current_popular(user_id, current_page, current_movie)
 
-    user_page = manage_user_data(user_id, user_data)
-    message_text += f"\nВы на странице {user_page}"
+    user_page = manage_user_data(user_id)
+
+    message_text += f"<b><i>{get_text(language_code, 'current_page_for_content')} {user_page} 📄</i></b>"
 
     message_id = get_message_id_from_db(user_id)
     if message_id is None or message_id == 0:
@@ -213,7 +195,7 @@ async def reset_movies(call, user_id, chat_id):
     type = call.data.split('_')[3]
     sort_order = call.data.split('_')[4]
 
-    resetting_user_data(user_id, user_data)
+    resetting_user_data(user_id)
     update_current_popular(user_id, current_page, current_movie)
     update_current_rating(user_id, current_rating_page, current_rating_movie)
     set_filter_movie_page_movie_by_user_id(user_id, current_filter_movie_page, current_filter_movie_movie)
@@ -228,11 +210,16 @@ async def reset_movies(call, user_id, chat_id):
     elif type == "rating":
         await send_next_media_by_rating(call, sort_order, 1000,
                                         content_type)
+    else:
+        await send_next_page_filter(call, language_code, content_type)
 
     await delete_message_after_delay(5, call.from_user.id, msg.message_id)
 
 
-async def reset_filters(user_id, chat_id, content_type):
+async def reset_filters(call, content_type):
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    language_code = get_user_language_from_db(user_id)
     if content_type == 'movie':
         reset_filters_movie(user_id)
     elif content_type == 'tv':
@@ -270,6 +257,7 @@ def generate_filter_submenu(language_code, content_type="any", type="any"):
 
 
 async def generate_genre_submenu(call, tmdb_language_code, content_type):
+    lang_code = get_user_language_from_db(call.from_user.id)
     genres_api = Genres()
     if content_type == 'movie':
         genres_response = genres_api.movie_list(language=tmdb_language_code)
@@ -288,9 +276,14 @@ async def generate_genre_submenu(call, tmdb_language_code, content_type):
     buttons = [[InlineKeyboardButton(text=genre_name, callback_data=f'genre_{content_type}_{genre_id}') for
                 genre_id, genre_name in group] for group in genre_groups]
 
+    # Add "any genre" button
+    any_genre_button = InlineKeyboardButton(text=get_text(lang_code, "any_genre"),
+                                            callback_data=f'genre_{content_type}_any')
+    buttons.append([any_genre_button])
+
     keyboard_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    message_text = get_text(call.data.split('_')[2], 'select_option')
+    message_text = get_text(lang_code, 'select_option')
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                 reply_markup=keyboard_markup)
 
@@ -377,11 +370,11 @@ async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_or
 
     if content_type == 'movie':
         media_api = tmdb.Discover()
-        response = media_api.movie(sort_by=f'popularity.{sort_order}', vote_count_gte=vote_count,
+        response = media_api.movie(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
                                    language=tmdb_language_code, page=current_page)
     elif content_type == 'tv':
         media_api = tmdb.Discover()
-        response = media_api.tv(sort_by=f'popularity.{sort_order}', vote_count_gte=vote_count,
+        response = media_api.tv(sort_by=f'vote_average.{sort_order}', vote_count_gte=vote_count,
                                 language=tmdb_language_code, page=current_page)
     else:
         raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
@@ -401,6 +394,10 @@ async def send_next_media_by_rating(callback_query: types.CallbackQuery, sort_or
         current_movie = 0
 
     update_current_popular(user_id, current_page, current_movie)
+
+    user_page = manage_user_data(user_id)
+    message_text += f"<b><i>{get_text(language_code, 'current_page_for_content')} {user_page} 📄</i></b>"
+
     message_id = get_message_id_from_db(user_id)
     if message_id is not None and message_id != 0:
         await bot.delete_message(chat_id=user_id, message_id=message_id)
@@ -468,13 +465,15 @@ def menu_keyboard(language_code, call):
     option_texts = get_text(language_code, 'menu_keyboard')
 
     user_id = call.from_user.id
-    resetting_user_data(user_id, user_data)
+    resetting_user_data(user_id)
     store_message_id_in_db(user_id, 0)
 
     keyboard = [[types.InlineKeyboardButton(text=option_texts[0], callback_data=f'menu_option_1_{language_code}'),
                  types.InlineKeyboardButton(text=option_texts[1], callback_data=f'menu_option_2_{language_code}'), ],
                 [types.InlineKeyboardButton(text=option_texts[2], callback_data=f'menu_option_3_{language_code}'),
-                 types.InlineKeyboardButton(text=option_texts[3], callback_data=f'menu_option_4_{language_code}'), ]]
+                 types.InlineKeyboardButton(text=option_texts[3], callback_data=f'menu_option_4_{language_code}'), ],
+                [types.InlineKeyboardButton(text=option_texts[4], callback_data=f'menu_option_5_{language_code}')],
+                ]
     keyboard_markup = types.InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     return keyboard_markup
@@ -593,7 +592,7 @@ async def send_option_message(query, language_code, select_option_text, check=No
     back_text = get_text(language_code, 'back')
 
     user_id = query.from_user.id
-    resetting_user_data(user_id, user_data)
+    resetting_user_data(user_id)
     store_message_id_in_db(user_id, 0)
 
     movies_button = types.InlineKeyboardButton(text=movies_text, callback_data='saved_movie')
@@ -612,7 +611,7 @@ async def send_option_message(query, language_code, select_option_text, check=No
 def extract_content_info(content_info, content_type):
     title = content_info['title'] if content_type == 'movie' else content_info['name']
     original_title = content_info['original_title'] if content_type == 'movie' else content_info['original_name']
-    poster_url = 'https://image.tmdb.org/t/p/w500' + content_info['poster_path']
+    poster_url = 'https://image.tmdb.org/t/p/w500' + (content_info['poster_path'] or '')
     vote_average = content_info['vote_average']
     genre_names = [genre['name'] for genre in content_info['genres']]
     release_year = content_info['release_date'].split('-')[0] if content_type == 'movie' else \
@@ -642,11 +641,13 @@ def get_content_by_id(content_id, content_type, language):
 async def send_content_details_by_content_id(content_id, content_type, call, save=False):
     language_code = get_user_language_from_db(call.from_user.id)
     tmdb_language_code = get_text(language_code, 'LANGUAGE_CODES')
-
+    user_id = call.from_user.id
     if content_type == 'movie':
         content_info = get_movie_details_from_TMDB(content_id, tmdb_language_code)
+        content_exists = check_content_exists_in_db(user_id, content_id, 'movie')
     elif content_type == 'tv':
         content_info = get_series_details_from_TMDB(content_id, tmdb_language_code)
+        content_exists = check_content_exists_in_db(user_id, content_id, 'tv')
 
     title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
         content_info, content_type)
@@ -658,8 +659,11 @@ async def send_content_details_by_content_id(content_id, content_type, call, sav
 
     if len(message_text) > 1024:
         message_text = message_text[:1021] + '...'
+    if content_exists:
+        keyboard = create_keyboard(content_id, language_code, 'already_saved', check_type(content_type))
+    else:
+        keyboard = create_keyboard(content_id, language_code, 'save', check_type(content_type))
 
-    keyboard = create_keyboard(content_id, language_code, 'save', check_type(content_type))
     if save:
         keyboard.inline_keyboard.append(
             [InlineKeyboardButton(text=get_text(language_code, 'delete'), callback_data=f'delete_{content_id}')])
@@ -818,6 +822,8 @@ async def send_next_page_filter(call, language_code, content_type):
     elif content_type == 'tv':
         set_filter_series_page_movie_by_user_id(user_id, current_page, current_movie)
 
+    user_page = manage_user_data(user_id)
+    message_text += f"<b><i>{get_text(language_code, 'current_page_for_content')} {user_page} 📄</i></b>"
     message_id = get_message_id_from_db(user_id)
     if not message_id or message_id == 0:
         sent_message = await bot.send_message(user_id, text=message_text, parse_mode='HTML')
@@ -829,6 +835,8 @@ async def send_next_page_filter(call, language_code, content_type):
 
 
 async def send_previous_page_filter(call, language_code, content_type):
+    backward_page(call.from_user.id)
+    print(1)
     if content_type == 'movie':
         current_page, current_movie = get_filter_movie_page_movie_by_user_id(call.from_user.id)
     elif content_type == 'tv':
@@ -851,6 +859,7 @@ async def send_previous_page_filter(call, language_code, content_type):
 
 
 async def handle_previous_media(call, language_code, content_type, sort_order=None, vote_count=None):
+    backward_page(call.from_user.id)
     current_page, current_movie = get_current_popular_by_user_id(call.from_user.id)
     if current_page == 1 and current_movie == 10 or current_page == 1 and current_movie == 0:
         await call.answer(get_text(language_code, 'first_page'), show_alert=False)
@@ -866,14 +875,13 @@ async def handle_previous_media(call, language_code, content_type, sort_order=No
     elif current_movie == 10:
         current_page -= 1
         current_movie = 10
-    backward_page(call.from_user.id, user_data)
+
     update_current_popular(call.from_user.id, current_page, current_movie)
 
     if sort_order is None:
         await send_next_media(call, language_code, content_type)
     else:
         await send_next_media_by_rating(call, sort_order=sort_order, vote_count=vote_count, content_type=content_type)
-
 
 
 async def send_previous_media_by_popularity(call, language_code, content_type):
@@ -983,3 +991,29 @@ async def check_filters_exist(user_id, content_type):
         return True
     else:
         return False
+
+
+# ====================== Search ====================== #
+def get_id_by_name(name, content_type):
+    api_key = TMDB_API_KEY  # replace with your TMDb API key
+    base_url = 'https://api.themoviedb.org/3/search/'
+
+    if content_type not in ['movie', 'tv']:
+        raise ValueError("Invalid content_type. Expected 'movie' or 'tv'.")
+
+    url = f"{base_url}{content_type}"
+    params = {'api_key': api_key, 'query': name}
+
+    response = requests.get(url, params=params)
+    data = response.json()
+
+    try:
+        if data['total_results'] > 0:
+            return data['results']
+        else:
+            return []
+    except KeyError as e:
+        print(f"KeyError: {e}")
+        print(f"Response data: {data}")
+        return []
+

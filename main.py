@@ -100,6 +100,10 @@ async def set_menu_callback(query: types.CallbackQuery):
                                     reply_markup=keyboard)
     elif menu_code == '4':
         await send_option_message(query, language_code, select_option_text)
+    elif menu_code == '5':
+        ask_name_text = get_text(language_code, 'ask_name')
+        await bot.send_message(query.from_user.id, ask_name_text)
+        await query.answer(show_alert=False)
 
 
 @dp.callback_query(lambda query: query.data.startswith('choose_content_'))
@@ -198,7 +202,7 @@ async def reset_page_callback(call):
 @dp.callback_query(lambda query: query.data.startswith('filter_reset_page_'))
 async def reset_page_filter_callback(call):
     await call.answer(show_alert=False)
-    await reset_filters(call.from_user.id, call.message.chat.id, call.data.split('_')[3])
+    await reset_filters(call, call.data.split('_')[3])
 
 
 @dp.callback_query(lambda query: query.data.startswith('next_page_filter'))
@@ -241,8 +245,11 @@ async def process_callback_save(callback_query: types.CallbackQuery):
     elif content_type == 'tv':
         save_series_to_db(user_id, movie_id)
 
-    save_text = get_text(get_user_language_from_db(user_id), 'save')
     await callback_query.answer(get_text(language_code, 'save_yet'), show_alert=True)
+
+    new_keyboard = create_keyboard(movie_id, language_code, 'already_saved', check_type(content_type))
+
+    await bot.edit_message_reply_markup(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id, reply_markup=new_keyboard)
 
 
 @dp.callback_query(lambda c: c.data and c.data.startswith('sort_option_low_'))
@@ -320,12 +327,18 @@ async def process_callback_genre(call: types.CallbackQuery):
     content_type = call.data.split('_')[1]
     language_code = get_user_language_from_db(call.from_user.id)
 
-    if content_type == 'movie':
-        save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
-                                             rating=None)
-    elif content_type == 'tv':
-        save_fields_to_table_search_series_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
-                                              rating=None)
+    if chosen_genre_id != 'any':
+        if content_type == 'movie':
+            save_fields_to_table_search_movie_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
+                                                 rating=None)
+        elif content_type == 'tv':
+            save_fields_to_table_search_series_db(call.from_user.id, chosen_genre_id, year_range=None, user_rating=None,
+                                                  rating=None)
+    else:
+        if content_type == 'movie':
+            reset_genre_filter_movie(call.from_user.id)
+        elif content_type == 'tv':
+            reset_genre_filter_movie(call.from_user.id)
 
     message_text, keyboard_markup = generate_filter_submenu(language_code, content_type)
     await bot.edit_message_text(text=message_text, chat_id=call.from_user.id, message_id=call.message.message_id,
@@ -425,7 +438,7 @@ async def process_search(call: types.CallbackQuery):
 
     set_filter_pages_and_movies_by_user_id(user_id, 1, 1, 0, 0)
 
-    if check_filters_exist(user_id, content_type):
+    if await check_filters_exist(user_id, content_type):
         msg_text = get_text(language_code, 'selected_filters') + "\n" + get_user_filters(user_id, content_type)
         await bot.edit_message_text(text=msg_text, chat_id=call.from_user.id, message_id=call.message.message_id,
                                     parse_mode=ParseMode.HTML)
@@ -455,7 +468,6 @@ async def show_saved_media(call: types.CallbackQuery):
             content, genres = get_content_by_id(content_id, content_type, tmdb_language_code)
             title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
                 content, content_type)
-            # Limit the overview to 100 characters
             overview = (overview[:97] + '...') if len(overview) > 100 else overview
             message_text = get_message_text_for_card_from_TMDB(index, user_language, title, vote_average,
                                                                genre_names,
@@ -469,6 +481,12 @@ async def show_saved_media(call: types.CallbackQuery):
             await bot.send_message(call.from_user.id, message_text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
+@dp.callback_query(lambda c: c.data.startswith('already_saved'))
+async def show_already_saved_media(call: types.CallbackQuery):
+    language_code = get_user_language_from_db(call.from_user.id)
+    await call.answer(text=get_text(language_code, 'already_saved'), show_alert=False)
+
+
 # ========================================= Delete =========================================  #
 
 @dp.callback_query(lambda query: query.data.startswith('delete_'))
@@ -480,7 +498,6 @@ async def delete_callback(query: types.CallbackQuery):
         delete_movie_from_db(user_id, movie_id)
     elif query.data.split('_')[2] == 'tv':
         delete_tv_from_db(user_id, movie_id)
-
 
     await bot.delete_message(chat_id=query.message.chat.id, message_id=query.message.message_id)
 
@@ -535,6 +552,8 @@ import re
 
 @dp.message()
 async def cmd_film(message: types.Message):
+    user_language = get_user_language_from_db(message.from_user.id)
+    tmdb_language_code = get_text(user_language, 'LANGUAGE_CODES')
     if message.text.startswith('/film'):
         match = re.match(r'^/film(\d+)$', message.text)
 
@@ -553,9 +572,34 @@ async def cmd_film(message: types.Message):
         else:
             await message.answer("Please include a film ID.")
     else:
-        msg_text = await message.answer(
-            get_text(get_user_language_from_db(message.from_user.id), 'cannot_read_message'))
-        await delete_message_after_delay(7, message.from_user.id, msg_text.message_id)
+        try:
+            content_type = message.text.split('-')[0]
+            content_name = message.text.split('-')[1]
+
+            if content_type == 'film':
+                content_type = 'movie'
+            elif content_type == 'series':
+                content_type = 'tv'
+            if content_type and content_name:
+                matches = get_id_by_name(content_name, content_type)
+                message_text = ""  # Initialize an empty string to build the message
+                for index, match in enumerate(matches, start=1):
+                    content_id = match['id']
+                    content, genres = get_content_by_id(content_id, content_type, tmdb_language_code)
+                    title, original_title, poster_url, vote_average, genre_names, release_year, runtime, adult, overview, additional_info = extract_content_info(
+                        content, content_type)
+                    overview = (overview[:97] + '...') if len(overview) > 100 else overview
+                    message_text += get_message_text_for_card_from_TMDB(index, user_language, title, vote_average,
+                                                                        genre_names, release_year, overview,
+                                                                        content_type, content_id) + "\n\n"
+
+                await bot.send_message(message.from_user.id, message_text, parse_mode=ParseMode.HTML)
+
+
+        except IndexError as e:
+            msg_text = await message.answer(
+                get_text(get_user_language_from_db(message.from_user.id), 'cannot_read_message'))
+            await delete_message_after_delay(7, message.from_user.id, msg_text.message_id)
 
 
 # ========================================= Testing and Exception Handling ========================================= #
